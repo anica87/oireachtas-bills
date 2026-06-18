@@ -49,12 +49,3 @@ export function mapBillRecord(record: BillRecord): Bill {
     uri: bill.uri,
   };
 }
-
-// ─── Filter options ────────────────────────────────────────────────────────
-
-export const BILL_TYPE_OPTIONS = [
-  { label: "All types", value: "" },
-  { label: "Public", value: "pub" },
-  { label: "Private", value: "pri" },
-  { label: "Private Members'", value: "pmb" },
-] as const;

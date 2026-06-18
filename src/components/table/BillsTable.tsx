@@ -1,31 +1,26 @@
 import {
-  Box,
-  Chip,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  Skeleton,
-  Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TablePagination,
-  TableRow,
-  Tabs,
-  Typography,
+  Box, Chip, FormControl, IconButton, InputLabel, MenuItem, Paper, Select,
+  Skeleton, Stack, Tab, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Tabs, Tooltip, Typography,
 } from "@mui/material";
+import FirstPageIcon from "@mui/icons-material/FirstPage";
+import LastPageIcon from "@mui/icons-material/LastPage";
+import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
+import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { useState } from "react";
 import { FavouriteButton } from "@/components/favorite/FavouriteButton";
 import { BillModal } from "@/components/modal/BillModal";
 import { useFavourites } from "@/context/FavouritesContext";
-import { useBills } from "@/hooks/useBills";
+import { useBills, useBillTypes } from "@/hooks/useBills";
 import type { Bill } from "@/types";
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
+type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
+
+const SKELETON_ROWS = ["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t"];
+const SKELETON_COLS = ["a","b","c","d","e"];
+
+type TabValue = "all" | "favourites";
 
 function getStatusColor(status: string): "default" | "success" | "error" | "warning" | "primary" {
   const s = status.toLowerCase();
@@ -36,31 +31,126 @@ function getStatusColor(status: string): "default" | "success" | "error" | "warn
   return "default";
 }
 
+interface PaginationState {
+  page: number;
+  pageSize: PageSize;
+}
+
+interface TablePaginationControlsProps {
+  page: number;
+  pageSize: PageSize;
+  total: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: PageSize) => void;
+}
+
+function TablePaginationControls({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+}: TablePaginationControlsProps) {
+  const lastPage = Math.max(0, Math.ceil(total / pageSize) - 1);
+  const from = total === 0 ? 0 : page * pageSize + 1;
+  const to = Math.min((page + 1) * pageSize, total);
+
+  return (
+    <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={1} sx={{ px: 2, py: 1 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
+        Rows per page:
+      </Typography>
+      <Select
+        size="small"
+        value={pageSize}
+        onChange={(e) => onPageSizeChange(Number(e.target.value) as PageSize)}
+        sx={{ fontSize: 14 }}
+      >
+        {PAGE_SIZE_OPTIONS.map((n) => (
+          <MenuItem key={n} value={n}>{n}</MenuItem>
+        ))}
+      </Select>
+
+      <Typography variant="body2" color="text.secondary" sx={{ mx: 2, minWidth: 80, textAlign: "center" }}>
+        {from}–{to} of {total}
+      </Typography>
+
+      <Tooltip title="First page">
+        <span>
+          <IconButton size="small" onClick={() => onPageChange(0)} disabled={page === 0}>
+            <FirstPageIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title="Previous page">
+        <span>
+          <IconButton size="small" onClick={() => onPageChange(page - 1)} disabled={page === 0}>
+            <NavigateBeforeIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title="Next page">
+        <span>
+          <IconButton size="small" onClick={() => onPageChange(page + 1)} disabled={page >= lastPage}>
+            <NavigateNextIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title="Last page">
+        <span>
+          <IconButton size="small" onClick={() => onPageChange(lastPage)} disabled={page >= lastPage}>
+            <LastPageIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+    </Stack>
+  );
+}
+
 export function BillsTable() {
   const { isFavourite, toggle, favouriteIds } = useFavourites();
+  const { data: billTypes = [] } = useBillTypes();
 
-  const [tab, setTab] = useState<"all" | "favourites">("all");
+  const [tab, setTab] = useState<TabValue>("all");
   const [typeFilter, setTypeFilter] = useState("");
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
 
-  const { data, isLoading, error } = useBills({ page, pageSize, typeFilter });
+  // Independent pagination per tab
+  const [allPagination, setAllPagination] = useState<PaginationState>({ page: 0, pageSize: 20 });
+  const [favPagination, setFavPagination] = useState<PaginationState>({ page: 0, pageSize: 20 });
+
+  const pagination = tab === "all" ? allPagination : favPagination;
+  const setPagination = tab === "all" ? setAllPagination : setFavPagination;
+
+  const { data, isLoading, error } = useBills({
+    page: allPagination.page,
+    pageSize: allPagination.pageSize,
+  });
 
   const bills = data?.bills ?? [];
   const total = data?.total ?? 0;
-  const billTypes = Array.from(new Set(bills.map((b) => b.billType)));
 
-  const rows = tab === "favourites" ? bills.filter((b) => favouriteIds.includes(b.id)) : bills;
+  const filtered = typeFilter ? bills.filter((b) => b.billType === typeFilter) : bills;
 
-  function handleTabChange(_: React.SyntheticEvent, value: "all" | "favourites") {
+  const favouriteBills = filtered.filter((b) => favouriteIds.includes(b.id));
+  const favouritesPage = favouriteBills.slice(
+    favPagination.page * favPagination.pageSize,
+    (favPagination.page + 1) * favPagination.pageSize
+  );
+
+  const rows = tab === "favourites" ? favouritesPage : filtered;
+  const rowTotal = tab === "favourites" ? favouriteBills.length : total;
+
+  function handleTabChange(_: React.SyntheticEvent, value: TabValue) {
     setTab(value);
-    setPage(0);
   }
 
-  function handleTypeFilter(value: string) {
-    setTypeFilter(value);
-    setPage(0);
+  function handlePageChange(page: number) {
+    setPagination((prev) => ({ ...prev, page }));
+  }
+
+  function handlePageSizeChange(pageSize: PageSize) {
+    setPagination({ page: 0, pageSize });
   }
 
   const colSpan = 5;
@@ -85,13 +175,15 @@ export function BillsTable() {
           <Select
             value={typeFilter}
             label="Bill type"
-            onChange={(e) => handleTypeFilter(e.target.value)}
+            onChange={(e) => {
+              setTypeFilter(e.target.value);
+              setAllPagination((p) => ({ ...p, page: 0 }));
+              setFavPagination((p) => ({ ...p, page: 0 }));
+            }}
           >
             <MenuItem value="">All types</MenuItem>
-            {billTypes.map((t) => (
-              <MenuItem key={t} value={t}>
-                {t}
-              </MenuItem>
+            {billTypes.map((type) => (
+              <MenuItem key={type} value={type}>{type}</MenuItem>
             ))}
           </Select>
         </FormControl>
@@ -119,12 +211,10 @@ export function BillsTable() {
                 </TableCell>
               </TableRow>
             ) : isLoading ? (
-              Array.from({ length: pageSize }, (_, i) => (
-                /* biome-ignore lint/suspicious/noArrayIndexKey: skeleton rows are static */
-                <TableRow key={i} aria-hidden="true">
-                  {Array.from({ length: colSpan }, (_, j) => (
-                    /* biome-ignore lint/suspicious/noArrayIndexKey: skeleton rows are static */
-                    <TableCell key={`skeleton-${i}-${j}`}>
+              SKELETON_ROWS.slice(0, pagination.pageSize).map((row) => (
+                <TableRow key={row} aria-hidden="true">
+                  {SKELETON_COLS.map((col) => (
+                    <TableCell key={col}>
                       <Skeleton variant="text" width="80%" />
                     </TableCell>
                   ))}
@@ -185,17 +275,12 @@ export function BillsTable() {
         </Table>
       </TableContainer>
 
-      <TablePagination
-        component="div"
-        count={total}
-        page={page}
-        rowsPerPage={pageSize}
-        rowsPerPageOptions={PAGE_SIZE_OPTIONS}
-        onPageChange={(_, p) => setPage(p)}
-        onRowsPerPageChange={(e) => {
-          setPageSize(parseInt(e.target.value, 10));
-          setPage(0);
-        }}
+      <TablePaginationControls
+        page={pagination.page}
+        pageSize={pagination.pageSize}
+        total={rowTotal}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
       />
 
       <BillModal bill={selectedBill} open={!!selectedBill} onClose={() => setSelectedBill(null)} />

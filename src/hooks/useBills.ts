@@ -31,3 +31,15 @@ export function useBills({ page, pageSize, typeFilter }: UseBillsOptions) {
     staleTime: 1000 * 60 * 5,
   });
 }
+
+export function useBillTypes(): string[] {
+  const { data } = useQuery<string[]>({
+    queryKey: ["bill-types"],
+    queryFn: async () => {
+      const response = await fetchBills({ limit: 1000, skip: 0 });
+      return Array.from(new Set(response.results.map((r) => r.bill.billType ?? "").filter(Boolean)));
+    },
+    staleTime: 1000 * 60 * 30, // types won't change often
+  });
+  return data ?? [];
+}
