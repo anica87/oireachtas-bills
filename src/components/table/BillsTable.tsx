@@ -1,345 +1,186 @@
-/**
- * BillsTable — domain-specific table for the Oireachtas bills list.
- *
- * Composes the generic DataTable with:
- *  - Bill-specific column definitions
- *  - Multi-filter controls (type, status, house, search)
- *  - Client-side favourites filtering
- *  - Favourite toggle integration
- */
-
-import ClearIcon from "@mui/icons-material/Clear";
-import SearchIcon from "@mui/icons-material/Search";
 import {
   Box,
   Chip,
   FormControl,
-  InputAdornment,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
-  Stack,
-  TextField,
-  Tooltip,
+  Skeleton,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TablePagination,
+  TableRow,
+  Tabs,
   Typography,
 } from "@mui/material";
-import IconButton from "@mui/material/IconButton";
-import { useCallback, useId, useMemo, useState } from "react";
-import { BILL_STATUS_OPTIONS, BILL_TYPE_OPTIONS, ORIGIN_HOUSE_OPTIONS } from "@/api/bills";
+import { useState } from "react";
 import { FavouriteButton } from "@/components/favorite/FavouriteButton";
-import { DataTable } from "@/components/table/DataTable";
+import { BillModal } from "@/components/modal/BillModal";
 import { useFavourites } from "@/context/FavouritesContext";
 import { useBills } from "@/hooks/useBills";
-import type { Bill, BillFilters, ColumnDef, PaginationState, SortState } from "@/types";
+import type { Bill } from "@/types";
 
-// ─── Status chip colour ───────────────────────────────────────────────────
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
-function getStatusColor(
-  status: string,
-): "default" | "primary" | "success" | "warning" | "error" | "info" {
+function getStatusColor(status: string): "default" | "success" | "error" | "warning" | "primary" {
   const s = status.toLowerCase();
   if (s.includes("enact") || s.includes("passed") || s.includes("signed")) return "success";
   if (s.includes("lapsed") || s.includes("withdrawn") || s.includes("defeated")) return "error";
-  if (s.includes("committee") || s.includes("report") || s.includes("second")) return "warning";
+  if (s.includes("committee") || s.includes("second")) return "warning";
   if (s.includes("first")) return "primary";
-  if (s.includes("current")) return "info";
   return "default";
 }
 
-// ─── Props ────────────────────────────────────────────────────────────────
+export function BillsTable() {
+  const { isFavourite, toggle, favouriteIds } = useFavourites();
 
-interface BillsTableProps {
-  onRowClick: (bill: Bill) => void;
-  favouritesOnly?: boolean;
-}
+  const [tab, setTab] = useState<"all" | "favourites">("all");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
+  const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
 
-// ─── Component ────────────────────────────────────────────────────────────
+  const { data, isLoading, error } = useBills({ page, pageSize, typeFilter });
 
-export function BillsTable({ onRowClick, favouritesOnly = false }: BillsTableProps) {
-  const filterLabelId = useId();
+  const bills = data?.bills ?? [];
+  const total = data?.total ?? 0;
+  const billTypes = Array.from(new Set(bills.map((b) => b.billType)));
 
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 20,
-  });
+  const rows = tab === "favourites"
+    ? bills.filter((b) => favouriteIds.includes(b.id))
+    : bills;
 
-  const [filters, setFilters] = useState<BillFilters>({
-    billType: "",
-    billStatus: "",
-    originHouse: "",
-    search: "",
-  });
+  function handleTabChange(_: React.SyntheticEvent, value: "all" | "favourites") {
+    setTab(value);
+    setPage(0);
+  }
 
-  const [sortState, setSortState] = useState<SortState>({
-    key: "",
-    direction: false,
-  });
+  function handleTypeFilter(value: string) {
+    setTypeFilter(value);
+    setPage(0);
+  }
 
-  const { isFavourite, getStatus, toggle, favouriteIds } = useFavourites();
-
-  const { data, isLoading, isFetching, error } = useBills({
-    pagination,
-    filters,
-  });
-
-  // Reset page when filters change
-  const setFilter = useCallback(<K extends keyof BillFilters>(key: K, value: BillFilters[K]) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-  }, []);
-
-  const clearFilters = useCallback(() => {
-    setFilters({ billType: "", billStatus: "", originHouse: "", search: "" });
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-  }, []);
-
-  // Apply favourites-only filter client-side
-  const displayData = useMemo(() => {
-    const base = data?.data ?? [];
-    return favouritesOnly ? base.filter((b) => favouriteIds.includes(b.id)) : base;
-  }, [data, favouritesOnly, favouriteIds]);
-
-  const hasActiveFilters = Object.values(filters).some(Boolean);
-
-  // ── Column definitions ────────────────────────────────────────────────────
-  const columns = useMemo<ColumnDef<Bill>[]>(
-    () => [
-      {
-        key: "favourite",
-        header: "",
-        sortKey: false,
-        width: "48px",
-        cell: (bill) => (
-          <FavouriteButton
-            isFavourite={isFavourite(bill.id)}
-            status={getStatus(bill.id)}
-            onToggle={() => void toggle(bill.id)}
-            itemLabel={`Bill ${bill.billNoDisplay}`}
-            size="small"
-          />
-        ),
-      },
-      {
-        key: "billNoDisplay",
-        header: "Bill No.",
-        sortKey: "billNo",
-        minWidth: "90px",
-        cell: (bill) => (
-          <Typography variant="body2" fontWeight={700} noWrap>
-            {bill.billNoDisplay}
-          </Typography>
-        ),
-      },
-      {
-        key: "billType",
-        header: "Type",
-        sortKey: "billType",
-        minWidth: "120px",
-        cell: (bill) => <Chip label={bill.billType} size="small" variant="outlined" />,
-      },
-      {
-        key: "status",
-        header: "Status",
-        sortKey: "status",
-        minWidth: "140px",
-        cell: (bill) => (
-          <Chip label={bill.status} size="small" color={getStatusColor(bill.status)} />
-        ),
-      },
-      {
-        key: "sponsor",
-        header: "Sponsor",
-        sortKey: false,
-        minWidth: "160px",
-        cell: (bill) => (
-          <Tooltip title={bill.sponsor} arrow>
-            <Typography variant="body2" noWrap sx={{ maxWidth: 200, display: "block" }}>
-              {bill.sponsor}
-            </Typography>
-          </Tooltip>
-        ),
-      },
-      {
-        key: "originHouse",
-        header: "House",
-        sortKey: "originHouse",
-        minWidth: "90px",
-        cell: (bill) => (
-          <Typography variant="body2" noWrap>
-            {bill.originHouse || "—"}
-          </Typography>
-        ),
-      },
-    ],
-    [isFavourite, getStatus, toggle],
-  );
-
-  // ── Empty state ───────────────────────────────────────────────────────────
-  const emptyState = (
-    <Box sx={{ py: 2, textAlign: "center" }}>
-      <Typography variant="h6" color="text.secondary" gutterBottom>
-        {favouritesOnly ? "No favourited bills yet" : "No bills found"}
-      </Typography>
-      <Typography variant="body2" color="text.secondary">
-        {favouritesOnly
-          ? "Click the ★ on any bill to save it here"
-          : hasActiveFilters
-            ? "Try adjusting or clearing your filters"
-            : "No data available"}
-      </Typography>
-    </Box>
-  );
+  const colSpan = 5;
 
   return (
-    <Box>
-      {/* ── Filter bar ── */}
-      {!favouritesOnly && (
-        <Box sx={{ mb: 3 }}>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} flexWrap="wrap" useFlexGap>
-            {/* Search */}
-            <TextField
-              size="small"
-              placeholder="Search by title, sponsor, bill no…"
-              value={filters.search}
-              onChange={(e) => setFilter("search", e.target.value)}
-              sx={{ minWidth: 240, flexGrow: 1 }}
-              inputProps={{ "aria-label": "Search bills" }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" color="action" />
-                  </InputAdornment>
-                ),
-                endAdornment: filters.search ? (
-                  <InputAdornment position="end">
-                    <IconButton
-                      size="small"
-                      onClick={() => setFilter("search", "")}
-                      aria-label="Clear search"
-                    >
-                      <ClearIcon fontSize="small" />
-                    </IconButton>
-                  </InputAdornment>
-                ) : null,
-              }}
-            />
+    <Paper elevation={2}>
+      <Tabs
+        value={tab}
+        onChange={handleTabChange}
+        sx={{ borderBottom: 1, borderColor: "divider", px: 2 }}
+      >
+        <Tab label="All Bills" value="all" />
+        <Tab
+          label={`Favourites${favouriteIds.length > 0 ? ` (${favouriteIds.length})` : ""}`}
+          value="favourites"
+        />
+      </Tabs>
 
-            {/* Bill type */}
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel id={`${filterLabelId}-type`}>Bill Type</InputLabel>
-              <Select
-                labelId={`${filterLabelId}-type`}
-                value={filters.billType}
-                label="Bill Type"
-                onChange={(e) => setFilter("billType", e.target.value)}
-              >
-                {BILL_TYPE_OPTIONS.map((opt) => (
-                  <MenuItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+      <Box sx={{ px: 2, pt: 2 }}>
+        <FormControl size="small" sx={{ minWidth: 180 }}>
+          <InputLabel>Bill type</InputLabel>
+          <Select
+            value={typeFilter}
+            label="Bill type"
+            onChange={(e) => handleTypeFilter(e.target.value)}
+          >
+            <MenuItem value="">All types</MenuItem>
+            {billTypes.map((t) => (
+              <MenuItem key={t} value={t}>{t}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Box>
 
-            {/* Status */}
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel id={`${filterLabelId}-status`}>Status</InputLabel>
-              <Select
-                labelId={`${filterLabelId}-status`}
-                value={filters.billStatus}
-                label="Status"
-                onChange={(e) => setFilter("billStatus", e.target.value)}
-              >
-                {BILL_STATUS_OPTIONS.map((opt) => (
-                  <MenuItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+      <TableContainer>
+        <Table size="small" aria-label="Bills table">
+          <TableHead>
+            <TableRow sx={{ bgcolor: "grey.50" }}>
+              <TableCell padding="checkbox" />
+              <TableCell>Bill number</TableCell>
+              <TableCell>Bill type</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Sponsor</TableCell>
+            </TableRow>
+          </TableHead>
 
-            {/* House */}
-            <FormControl size="small" sx={{ minWidth: 140 }}>
-              <InputLabel id={`${filterLabelId}-house`}>House</InputLabel>
-              <Select
-                labelId={`${filterLabelId}-house`}
-                value={filters.originHouse}
-                label="House"
-                onChange={(e) => setFilter("originHouse", e.target.value)}
-              >
-                {ORIGIN_HOUSE_OPTIONS.map((opt) => (
-                  <MenuItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Stack>
+          <TableBody>
+            {error ? (
+              <TableRow>
+                <TableCell colSpan={colSpan} align="center" sx={{ py: 4 }}>
+                  <Typography color="error" variant="body2">
+                    Failed to load: {error.message}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : isLoading ? (
+              Array.from({ length: pageSize }, (_, i) => (
+                <TableRow key={i} aria-hidden="true">
+                  {Array.from({ length: colSpan }, (_, j) => (
+                    <TableCell key={j}><Skeleton variant="text" width="80%" /></TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={colSpan} align="center" sx={{ py: 4 }}>
+                  <Typography color="text.secondary" variant="body2">
+                    {tab === "favourites"
+                      ? "No favourited bills yet — click a star to save one."
+                      : "No bills match the current filter."}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              rows.map((bill) => (
+                <TableRow
+                  key={bill.id}
+                  hover
+                  tabIndex={0}
+                  onClick={() => setSelectedBill(bill)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSelectedBill(bill); }}
+                  sx={{ cursor: "pointer", "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "-2px" } }}
+                >
+                  <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                    <FavouriteButton
+                      isFavourite={isFavourite(bill.id)}
+                      onToggle={() => toggle(bill.id)}
+                      billTitle={bill.billNoDisplay}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight={700}>{bill.billNoDisplay}</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={bill.billType} size="small" variant="outlined" />
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={bill.status} size="small" color={getStatusColor(bill.status)} />
+                  </TableCell>
+                  <TableCell>{bill.sponsor || "—"}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
-          {/* Active filter chips */}
-          {hasActiveFilters && (
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
-              {filters.search && (
-                <Chip
-                  label={`Search: "${filters.search}"`}
-                  size="small"
-                  onDelete={() => setFilter("search", "")}
-                  aria-label={`Remove search filter: ${filters.search}`}
-                />
-              )}
-              {filters.billType && (
-                <Chip
-                  label={`Type: ${BILL_TYPE_OPTIONS.find((o) => o.value === filters.billType)?.label}`}
-                  size="small"
-                  onDelete={() => setFilter("billType", "")}
-                />
-              )}
-              {filters.billStatus && (
-                <Chip
-                  label={`Status: ${filters.billStatus}`}
-                  size="small"
-                  onDelete={() => setFilter("billStatus", "")}
-                />
-              )}
-              {filters.originHouse && (
-                <Chip
-                  label={`House: ${ORIGIN_HOUSE_OPTIONS.find((o) => o.value === filters.originHouse)?.label}`}
-                  size="small"
-                  onDelete={() => setFilter("originHouse", "")}
-                />
-              )}
-              <Chip
-                label="Clear all"
-                size="small"
-                variant="outlined"
-                onClick={clearFilters}
-                aria-label="Clear all active filters"
-              />
-            </Stack>
-          )}
-        </Box>
-      )}
-
-      <DataTable<Bill>
-        columns={columns}
-        data={displayData}
-        rowCount={favouritesOnly ? favouriteIds.length : (data?.total ?? 0)}
-        pagination={pagination}
-        onPaginationChange={setPagination}
-        sortState={sortState}
-        onSortChange={setSortState}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        error={error}
-        onRowClick={onRowClick}
-        getRowKey={(bill) => bill.id}
-        getRowAriaLabel={(bill) =>
-          `Bill ${bill.billNoDisplay}: ${bill.shortTitleEn}. Type: ${bill.billType}. Status: ${bill.status}. Sponsor: ${bill.sponsor}`
-        }
-        emptyState={emptyState}
-        aria-label={favouritesOnly ? "Favourited bills" : "Bills list"}
-        rowsPerPageOptions={[10, 20, 50]}
+      <TablePagination
+        component="div"
+        count={total}
+        page={page}
+        rowsPerPage={pageSize}
+        rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+        onPageChange={(_, p) => setPage(p)}
+        onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
       />
-    </Box>
+
+      <BillModal bill={selectedBill} open={!!selectedBill} onClose={() => setSelectedBill(null)} />
+    </Paper>
   );
 }

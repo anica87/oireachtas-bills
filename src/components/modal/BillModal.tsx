@@ -1,10 +1,3 @@
-/**
- * BillModal — accessible dialog with tabbed English / Gaeilge views.
- *
- * ARIA: role="dialog", aria-modal, aria-labelledby, focus management.
- * Tabs: role="tabpanel", aria-controls, aria-labelledby.
- */
-
 import CloseIcon from "@mui/icons-material/Close";
 import {
   Box,
@@ -19,183 +12,77 @@ import {
   Tabs,
   Typography,
 } from "@mui/material";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { FavouriteButton } from "@/components/favorite/FavouriteButton";
 import { useFavourites } from "@/context/FavouritesContext";
 import type { Bill } from "@/types";
 
-interface TabPanelProps {
-  children: React.ReactNode;
-  value: number;
-  index: number;
-  id: string;
-  labelledById: string;
-}
-
-function TabPanel({ children, value, index, id, labelledById }: TabPanelProps) {
-  const isActive = value === index;
-  return (
-    <Box
-      role="tabpanel"
-      hidden={!isActive}
-      id={id}
-      aria-labelledby={labelledById}
-      tabIndex={isActive ? 0 : -1}
-      sx={{ py: 2, outline: "none" }}
-    >
-      {isActive && children}
-    </Box>
-  );
-}
-
-export interface BillModalProps {
+interface BillModalProps {
   bill: Bill | null;
   open: boolean;
   onClose: () => void;
 }
 
 export function BillModal({ bill, open, onClose }: BillModalProps) {
-  const [tabIndex, setTabIndex] = useState(0);
-  const uid = useId();
-  const { isFavourite, getStatus, toggle } = useFavourites();
-
-  const titleId = `${uid}-title`;
-  const tabEnId = `${uid}-tab-en`;
-  const tabGaId = `${uid}-tab-ga`;
-  const panelEnId = `${uid}-panel-en`;
-  const panelGaId = `${uid}-panel-ga`;
+  const [tab, setTab] = useState<"en" | "ga">("en");
+  const { isFavourite, toggle } = useFavourites();
 
   function handleClose() {
-    setTabIndex(0);
+    setTab("en");
     onClose();
   }
 
-  if (!bill) return null;
-
   return (
-    <Dialog
-      open={open}
-      onClose={handleClose}
-      aria-labelledby={titleId}
-      aria-modal="true"
-      fullWidth
-      maxWidth="sm"
-    >
-      <DialogTitle
-        id={titleId}
-        component="div"
-        sx={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 1,
-          pr: 1,
-        }}
-      >
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="h6" component="h2" fontWeight={700}>
-            Bill {bill.billNoDisplay}
-          </Typography>
-          <Stack direction="row" spacing={1} sx={{ mt: 0.5, flexWrap: "wrap", gap: 0.5 }}>
-            <Chip label={bill.billType} size="small" color="primary" variant="outlined" />
-            <Chip label={bill.status} size="small" color="success" variant="outlined" />
-            {bill.originHouse && <Chip label={bill.originHouse} size="small" variant="outlined" />}
-          </Stack>
-        </Box>
-
-        <Stack direction="row" alignItems="center" sx={{ flexShrink: 0 }}>
-          <FavouriteButton
-            isFavourite={isFavourite(bill.id)}
-            status={getStatus(bill.id)}
-            onToggle={() => void toggle(bill.id)}
-            itemLabel={`Bill ${bill.billNoDisplay}`}
-          />
-          <IconButton aria-label="Close bill details" onClick={handleClose} size="small">
-            <CloseIcon />
-          </IconButton>
-        </Stack>
-      </DialogTitle>
-
-      <Divider />
-
-      <DialogContent>
-        <Stack direction="row" spacing={3} sx={{ mb: 2 }}>
-          <Box>
-            <Typography variant="caption" color="text.secondary" fontWeight={600}>
-              SPONSOR
-            </Typography>
-            <Typography variant="body2">{bill.sponsor}</Typography>
-          </Box>
-          {bill.originHouse && (
-            <Box>
-              <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                HOUSE
-              </Typography>
-              <Typography variant="body2">{bill.originHouse}</Typography>
-            </Box>
-          )}
-        </Stack>
-
-        <Box>
-          <Tabs
-            value={tabIndex}
-            onChange={(_, v: number) => setTabIndex(v)}
-            aria-label="Bill title language"
-            variant="fullWidth"
+    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
+      {bill && (
+        <>
+          <DialogTitle
+            component="div"
+            sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1, pr: 1 }}
           >
-            <Tab
-              id={tabEnId}
-              aria-controls={panelEnId}
-              label="English"
-              aria-selected={tabIndex === 0}
-            />
-            <Tab
-              id={tabGaId}
-              aria-controls={panelGaId}
-              label="Gaeilge"
-              aria-selected={tabIndex === 1}
-            />
-          </Tabs>
+            <Box>
+              <Typography variant="h6" component="h2" fontWeight={700}>
+                Bill {bill.billNoDisplay}
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ mt: 0.5, flexWrap: "wrap" }}>
+                <Chip label={bill.billType} size="small" variant="outlined" />
+                <Chip label={bill.status} size="small" />
+              </Stack>
+            </Box>
 
-          <TabPanel value={tabIndex} index={0} id={panelEnId} labelledById={tabEnId}>
-            <Typography variant="body1" sx={{ lineHeight: 1.7 }}>
-              {bill.shortTitleEn || bill.longTitleEn || "No English title available."}
-            </Typography>
-            {bill.longTitleEn && bill.longTitleEn !== bill.shortTitleEn && (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                  FULL TITLE
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  {bill.longTitleEn}
-                </Typography>
-              </Box>
-            )}
-          </TabPanel>
+            <Stack direction="row" alignItems="center" sx={{ flexShrink: 0 }}>
+              <FavouriteButton
+                isFavourite={isFavourite(bill.id)}
+                onToggle={() => toggle(bill.id)}
+                billTitle={bill.billNoDisplay}
+              />
+              <IconButton aria-label="Close" onClick={handleClose} size="small">
+                <CloseIcon />
+              </IconButton>
+            </Stack>
+          </DialogTitle>
 
-          <TabPanel value={tabIndex} index={1} id={panelGaId} labelledById={tabGaId}>
-            <Typography
-              variant="body1"
-              sx={{
-                lineHeight: 1.7,
-                fontStyle: bill.shortTitleGa ? "normal" : "italic",
-              }}
-            >
-              {bill.shortTitleGa || bill.longTitleGa || "Níl teideal Gaeilge ar fáil."}
-            </Typography>
-            {bill.longTitleGa && bill.longTitleGa !== bill.shortTitleGa && (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                  LÁNTEIDEAL
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  {bill.longTitleGa}
-                </Typography>
-              </Box>
-            )}
-          </TabPanel>
-        </Box>
-      </DialogContent>
+          <Divider />
+
+          <DialogContent>
+            <Typography variant="caption" color="text.secondary" fontWeight={600}>SPONSOR</Typography>
+            <Typography variant="body2" sx={{ mb: 2 }}>{bill.sponsor || "—"}</Typography>
+
+            <Tabs value={tab} onChange={(_, v) => setTab(v)}>
+              <Tab label="English" value="en" />
+              <Tab label="Gaeilge" value="ga" />
+            </Tabs>
+
+            <Box sx={{ pt: 2 }}>
+              {tab === "en" ? (
+                <Typography>{bill.longTitleEn || bill.shortTitleEn || "No English title available."}</Typography>
+              ) : (
+                <Typography>{bill.longTitleGa || bill.shortTitleGa || "Níl teideal Gaeilge ar fáil."}</Typography>
+              )}
+            </Box>
+          </DialogContent>
+        </>
+      )}
     </Dialog>
   );
 }

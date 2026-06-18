@@ -44,7 +44,7 @@ export function BillsPage() {
         </Typography>
       </Box>
 
-      {/* Main tabs: All Bills / Favourites */}
+      {/* Main tabs: All Bills / Favourites
       <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
         <Tabs
           value={tabIndex}
@@ -75,7 +75,7 @@ export function BillsPage() {
             iconPosition="start"
           />
         </Tabs>
-      </Box>
+      </Box> */}
 
       {/* All Bills tab */}
       <Box role="tabpanel" id="tabpanel-all" aria-labelledby="tab-all" hidden={tabIndex !== 0}>
