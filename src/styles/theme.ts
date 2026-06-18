@@ -1,28 +1,21 @@
-/**
- * Application MUI theme.
- *
- * Uses a professional colour palette suited to a government legislation tracker.
- * Extends MUI's default theme with custom tokens and typography.
- */
-
 import { createTheme } from "@mui/material/styles";
 
 export const theme = createTheme({
   palette: {
     primary: {
-      main: "#1a4b8c", // Deep parliamentary blue
+      main: "#1a4b8c",
       light: "#4a72b5",
       dark: "#0d2d5a",
       contrastText: "#ffffff",
     },
     secondary: {
-      main: "#2e7d32", // Oireachtas green
+      main: "#2e7d32",
       light: "#60ad5e",
       dark: "#005005",
       contrastText: "#ffffff",
     },
     warning: {
-      main: "#f59e0b", // Amber for favourites
+      main: "#f59e0b",
     },
     background: {
       default: "#f5f7fa",
@@ -42,12 +35,9 @@ export const theme = createTheme({
       "Roboto",
       "sans-serif",
     ].join(","),
-
     h5: { fontWeight: 700, letterSpacing: -0.3 },
     h6: { fontWeight: 700 },
-
     body2: { lineHeight: 1.6 },
-
     caption: { letterSpacing: 0.4 },
   },
 
@@ -62,13 +52,11 @@ export const theme = createTheme({
         },
       },
     },
-
     MuiChip: {
       styleOverrides: {
         root: { fontWeight: 600, fontSize: "0.75rem" },
       },
     },
-
     MuiTab: {
       styleOverrides: {
         root: {
@@ -78,13 +66,11 @@ export const theme = createTheme({
         },
       },
     },
-
     MuiDialog: {
       styleOverrides: {
         paper: { borderRadius: 12 },
       },
     },
-
     MuiButton: {
       styleOverrides: {
         root: {
@@ -93,7 +79,6 @@ export const theme = createTheme({
         },
       },
     },
-
     MuiTablePagination: {
       styleOverrides: {
         toolbar: { flexWrap: "wrap" },

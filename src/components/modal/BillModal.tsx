@@ -59,10 +59,10 @@ export function BillModal({ bill, open, onClose }: BillModalProps) {
             <Stack direction="row" alignItems="center" sx={{ flexShrink: 0 }}>
               <FavouriteButton
                 isFavourite={isFavourite(bill.id)}
-                onToggle={() => toggle(bill.id)}
+                onToggle={() => toggle(bill)}
                 billTitle={bill.billNoDisplay}
               />
-              <IconButton aria-label="Close" onClick={handleClose} size="small">
+              <IconButton aria-label="close" onClick={handleClose} size="small">
                 <CloseIcon />
               </IconButton>
             </Stack>

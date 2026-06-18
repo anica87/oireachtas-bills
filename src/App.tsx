@@ -1,7 +1,3 @@
-/**
- * App root — wires up all providers.
- */
-
 import { CssBaseline, ThemeProvider } from "@mui/material";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout/AppLayout";

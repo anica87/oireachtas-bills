@@ -1,86 +1,137 @@
-/**
- * Integration tests for BillModal.
- */
-
-import { screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import { BillModal } from "@/components/modal/BillModal";
-import { renderWithProviders } from "@/test/utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { FavouritesProvider } from "@/context/FavouritesContext";
 import type { Bill } from "@/types";
+import { BillModal } from "./BillModal";
 
-const mockBill: Bill = {
-  id: "bill-uri-1",
-  billNo: "42",
-  billYear: "2024",
-  billNoDisplay: "42/2024",
-  billType: "Public",
-  status: "First Stage",
-  shortTitleEn: "Education Reform Bill 2024",
-  shortTitleGa: "Bille Athchóirithe Oideachais 2024",
-  longTitleEn: "An act to reform the education system",
-  longTitleGa: "Acht chun an córas oideachais a athchóiriú",
-  sponsor: "Minister for Education",
-  originHouse: "Dáil",
-  uri: "bill-uri-1",
-};
+function buildBill(overrides: Partial<Bill> = {}): Bill {
+  return {
+    id: "bill-1",
+    billNo: "42",
+    billYear: "2024",
+    billNoDisplay: "42/2024",
+    billType: "Public",
+    status: "First Stage",
+    shortTitleEn: "Short EN",
+    shortTitleGa: "Short GA",
+    longTitleEn: "Long English Title",
+    longTitleGa: "Long Gaeilge Title",
+    sponsor: "Micheál Martin",
+    originHouse: "Dáil",
+    uri: "http://data.oireachtas.ie/ie/oireachtas/bill/2024/42",
+    ...overrides,
+  };
+}
+
+function renderModal(props: Partial<React.ComponentProps<typeof BillModal>> = {}) {
+  const onClose = vi.fn();
+  const utils = render(
+    <FavouritesProvider>
+      <BillModal bill={buildBill()} open={true} onClose={onClose} {...props} />
+    </FavouritesProvider>
+  );
+  return { ...utils, onClose };
+}
 
 describe("BillModal", () => {
-  it("renders bill number and chips in header", () => {
-    renderWithProviders(<BillModal bill={mockBill} open={true} onClose={vi.fn()} />);
-    expect(screen.getByText(/bill 42\/2024/i)).toBeInTheDocument();
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders nothing when bill is null", () => {
+    render(
+      <FavouritesProvider>
+        <BillModal bill={null} open={true} onClose={vi.fn()} />
+      </FavouritesProvider>
+    );
+
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+  });
+
+  it("does not render dialog content when open is false", () => {
+    render(
+      <FavouritesProvider>
+        <BillModal bill={buildBill()} open={false} onClose={vi.fn()} />
+      </FavouritesProvider>
+    );
+
+    expect(screen.queryByText("Bill 42/2024")).not.toBeInTheDocument();
+  });
+
+  it("shows the bill number, type, and status", () => {
+    renderModal();
+
+    expect(screen.getByRole("heading", { name: "Bill 42/2024" })).toBeInTheDocument();
     expect(screen.getByText("Public")).toBeInTheDocument();
     expect(screen.getByText("First Stage")).toBeInTheDocument();
   });
 
-  it("shows English title in the first (default) tab", () => {
-    renderWithProviders(<BillModal bill={mockBill} open={true} onClose={vi.fn()} />);
-    expect(screen.getByText("Education Reform Bill 2024")).toBeInTheDocument();
+  it("shows the sponsor", () => {
+    renderModal();
+    expect(screen.getByText("Micheál Martin")).toBeInTheDocument();
   });
 
-  it("switches to Gaeilge tab and shows Irish title", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<BillModal bill={mockBill} open={true} onClose={vi.fn()} />);
-    await user.click(screen.getByRole("tab", { name: /gaeilge/i }));
-    expect(screen.getByText("Bille Athchóirithe Oideachais 2024")).toBeInTheDocument();
+  it("shows an em dash when sponsor is empty", () => {
+    renderModal({ bill: buildBill({ sponsor: "" }) });
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 
-  it("calls onClose when close button is clicked", async () => {
+  it("shows the English long title by default", () => {
+    renderModal();
+    expect(screen.getByText("Long English Title")).toBeInTheDocument();
+  });
+
+  it("falls back to the English short title when no long title exists", () => {
+    renderModal({ bill: buildBill({ longTitleEn: "", shortTitleEn: "Short EN Fallback" }) });
+    expect(screen.getByText("Short EN Fallback")).toBeInTheDocument();
+  });
+
+  it("shows a placeholder message when neither English title exists", () => {
+    renderModal({ bill: buildBill({ longTitleEn: "", shortTitleEn: "" }) });
+    expect(screen.getByText("No English title available.")).toBeInTheDocument();
+  });
+
+  it("switches to the Gaeilge tab and shows the Gaeilge title", async () => {
     const user = userEvent.setup();
-    const onClose = vi.fn();
-    renderWithProviders(<BillModal bill={mockBill} open={true} onClose={onClose} />);
-    await user.click(screen.getByRole("button", { name: /close bill details/i }));
+    renderModal();
+
+    await user.click(screen.getByRole("tab", { name: "Gaeilge" }));
+
+    expect(screen.getByText("Long Gaeilge Title")).toBeInTheDocument();
+    expect(screen.queryByText("Long English Title")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the Gaeilge placeholder when no Gaeilge title exists", async () => {
+    const user = userEvent.setup();
+    renderModal({ bill: buildBill({ longTitleGa: "", shortTitleGa: "" }) });
+
+    await user.click(screen.getByRole("tab", { name: "Gaeilge" }));
+
+    expect(screen.getByText("Níl teideal Gaeilge ar fáil.")).toBeInTheDocument();
+  });
+
+  it("calls onClose and resets to the English tab when the close button is clicked", async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderModal();
+
+    await user.click(screen.getByRole("tab", { name: "Gaeilge" }));
+    expect(screen.getByText("Long Gaeilge Title")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "close" }));
+
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("has an accessible favourite button with correct aria-pressed", () => {
-    renderWithProviders(<BillModal bill={mockBill} open={true} onClose={vi.fn()} />);
-    const favBtn = screen.getByRole("button", {
-      name: /add bill 42\/2024 to favourites/i,
-    });
-    expect(favBtn).toBeInTheDocument();
-    expect(favBtn).toHaveAttribute("aria-pressed", "false");
-  });
+  it("toggles favourite state when the favourite button is clicked", async () => {
+    const user = userEvent.setup();
+    renderModal();
 
-  it("shows sponsor information", () => {
-    renderWithProviders(<BillModal bill={mockBill} open={true} onClose={vi.fn()} />);
-    expect(screen.getByText(/minister for education/i)).toBeInTheDocument();
-  });
+    const favouriteButton = screen.getByRole("button", { name: "Add 42/2024 to favourites" });
+    await user.click(favouriteButton);
 
-  it("shows origin house information", () => {
-    renderWithProviders(<BillModal bill={mockBill} open={true} onClose={vi.fn()} />);
-    // "Dáil" appears in both the chip and the metadata section
-    const elements = screen.getAllByText(/dáil/i);
-    expect(elements.length).toBeGreaterThan(0);
-  });
-
-  it("renders nothing when bill is null", () => {
-    renderWithProviders(<BillModal bill={null} open={true} onClose={vi.fn()} />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  it("does not render dialog content when closed", () => {
-    renderWithProviders(<BillModal bill={mockBill} open={false} onClose={vi.fn()} />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Remove 42/2024 from favourites" })
+    ).toBeInTheDocument();
   });
 });

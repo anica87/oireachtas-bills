@@ -17,7 +17,6 @@ const localStorageMock = {
 
 global.localStorage = localStorageMock as unknown as Storage;
 
-// Mock IntersectionObserver as a proper class constructor
 class MockIntersectionObserver {
   observe = vi.fn();
   unobserve = vi.fn();
@@ -25,7 +24,6 @@ class MockIntersectionObserver {
 }
 global.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
 
-// Mock ResizeObserver as a proper class constructor
 class MockResizeObserver {
   observe = vi.fn();
   unobserve = vi.fn();

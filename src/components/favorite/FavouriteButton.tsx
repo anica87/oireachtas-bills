@@ -1,7 +1,3 @@
-/**
- * FavouriteButton — simple, accessible toggle button.
- */
-
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import { IconButton, Tooltip } from "@mui/material";
@@ -19,7 +15,7 @@ export const FavouriteButton = memo(function FavouriteButton({
   billTitle = "bill",
 }: FavouriteButtonProps) {
   function handleClick(e: React.MouseEvent) {
-    e.stopPropagation(); // prevent row selection when inside a table row
+    e.stopPropagation();
     onToggle();
   }
 

@@ -1,643 +1,251 @@
-# Oireachtas Bills Viewer
+# Oireachtas Bills Tracker
 
-A production-quality React application for browsing, filtering, and tracking Irish legislation from the [Oireachtas Open Data API](https://api.oireachtas.ie/v1).
+A React + TypeScript application for browsing, filtering, and favouriting bills from the Irish legislature. Data is sourced from the public [Oireachtas API](https://api.oireachtas.ie).
 
----
+## Tech stack
 
-## Quick Start
-
-```bash
-npm install
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173). No API keys required.
-
----
-
-## Table of Contents
-
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Available Scripts](#available-scripts)
-- [Architecture Deep Dive](#architecture-deep-dive)
-  - [API Client & Data Mapping](#api-client--data-mapping)
-  - [TypeScript Generics & infer](#typescript-generics--infer)
-  - [Custom Generic DataTable](#custom-generic-datatable)
-  - [FavouritesContext — useReducer + Context](#favouritescontext--usereducer--context)
-  - [FavouriteButton — Stateless Presentational](#favouritebutton--stateless-presentational)
-  - [TanStack Query — Server State](#tanstack-query--server-state)
-  - [Filters](#filters)
-  - [Accessibility](#accessibility)
-  - [Responsiveness](#responsiveness)
-- [API Response Shape](#api-response-shape)
-- [Testing](#testing)
-- [Linting & Formatting](#linting--formatting)
+- **React 18** with strict mode
+- **TypeScript**
+- **Vite** — dev server + build, with a proxy to the Oireachtas API
+- **MUI (Material UI v5)** — component library and theming
+- **TanStack Query (React Query v5)** — server state, caching, pagination
+- **Vitest** + **@testing-library/react** — unit and component testing
+- **Biome** — linting and formatting
 
 ---
 
-## Tech Stack
-
-| Tool | Version | Purpose |
-|---|---|---|
-| Vite | 6.x | Build tool, dev server, proxy |
-| React | 19.x | UI framework |
-| TypeScript | 5.x | Type safety, generics, `infer` |
-| Material UI | 7.x | Component library & design system |
-| TanStack Query | 5.x | Server state, caching, background refresh |
-| Biome | 1.9.x | Formatting + linting (replaces ESLint + Prettier) |
-| oxlint | latest | Fast secondary linter for React hooks & a11y |
-| Vitest | 4.x | Unit + integration test runner |
-| Testing Library | 16.x | DOM component testing |
-
----
-
-## Project Structure
+## Project structure
 
 ```
 src/
 ├── api/
-│   └── bills.ts              # API client, data mapper, mock favourite API
-│                             # Defines BILL_TYPE_OPTIONS, BILL_STATUS_OPTIONS, ORIGIN_HOUSE_OPTIONS
+│   └── bills.ts          # fetch + mapping layer
 ├── components/
 │   ├── favorite/
-│   │   └── FavouriteButton.tsx  # Stateless/presentational — all state via props
+│   │   └── FavouriteButton.tsx
 │   ├── layout/
-│   │   └── AppLayout.tsx     # Skip link, header, footer, landmark regions
+│   │   └── AppLayout.tsx
 │   ├── modal/
-│   │   └── BillModal.tsx     # Accessible dialog with tabbed En/Ga content
-│   └── table/
-│       ├── DataTable.tsx     # Generic, reusable table engine (custom, no TanStack Table)
-│       └── BillsTable.tsx    # Domain-specific: bill columns + multi-filter controls
+│   │   └── BillModal.tsx
+│   └── BillsTable.tsx
 ├── context/
-│   └── FavouritesContext.tsx # useReducer + Context, localStorage, optimistic updates
+│   └── FavouritesContext.tsx
 ├── hooks/
-│   └── useBills.ts           # useGenericFetch<T> + useBills wrapping TanStack Query
+│   └── useBills.ts
 ├── pages/
-│   └── BillsPage.tsx         # Main view: All Bills / Favourites tabs
+│   └── BillsPage.tsx
 ├── styles/
-│   └── theme.ts              # Custom MUI theme (parliamentary blue + Oireachtas green)
-├── test/
-│   ├── setup.ts              # Vitest global setup: jest-dom + ResizeObserver mock
-│   └── utils.tsx             # renderWithProviders — wraps all providers for tests
-└── types/
-    └── index.ts              # Domain types, utility types (InferFetchResult, etc.)
+│   └── theme.ts
+├── types.ts
+├── App.tsx
+└── main.tsx
 ```
 
 ---
 
-## Getting Started
-
-### Prerequisites
-
-- **Node.js** >= 18
-- **npm** >= 9
-
-### Install dependencies
+## Getting started
 
 ```bash
 npm install
-```
-
-### Development server
-
-```bash
 npm run dev
 ```
 
-Vite proxies `/api` → `https://api.oireachtas.ie` in development (configured in `vite.config.ts`), so there are no CORS issues.
-
-### Production build
+The Vite dev server proxies `/api` → `https://api.oireachtas.ie`, so the app makes requests to `/api/v1/legislation` which are transparently forwarded upstream. No CORS issues, no `.env` needed.
 
 ```bash
-npm run build
-npm run preview
+npm run build     # production build
+npm run lint      # Biome lint + format check
+npm test          # run all tests once
+npm run test:watch
 ```
 
 ---
 
-## Available Scripts
+## Architecture
 
-| Command | Description |
-|---|---|
-| `npm run dev` | Start dev server with HMR at localhost:5173 |
-| `npm run build` | Type-check + build for production |
-| `npm run preview` | Preview production build locally |
-| `npm run lint` | Run Biome check + oxlint across `src/` |
-| `npm run lint:biome` | Biome only |
-| `npm run lint:oxlint` | oxlint only |
-| `npm run lint:fix` | Auto-fix Biome formatting + safe lint fixes |
-| `npm run format` | Format all files with Biome |
-| `npm run test` | Run all tests once |
-| `npm run test:watch` | Vitest in interactive watch mode |
-| `npm run test:coverage` | Tests with HTML coverage report |
-| `npm run type-check` | TypeScript type check only (no emit) |
+### API layer (`src/api/bills.ts`)
 
----
+All network access goes through a single `apiFetch<T>` helper that builds the URL, appends query params (skipping empty values), and throws on non-2xx responses. The two public exports are:
 
-## Architecture Deep Dive
+**`fetchBills(params?)`** — hits `/api/v1/legislation` with optional `limit`, `skip`, and `bill_type`. Defaults to `limit: 20, skip: 0`. Returns the raw `BillsApiResponse` shape from the Oireachtas API.
 
-### API Client & Data Mapping
+**`mapBillRecord(record)`** — converts one raw `BillRecord` into a flat `Bill` domain object. Key transformations:
+- `id` is the bill's full URI (unique across all bills and years)
+- `billNoDisplay` is formatted as `"{billNo}/{billYear}"` or just `"{billNo}"` when the year is absent
+- `sponsor` resolves the first sponsor entry: prefers `sponsor.by.showAs` (the named TD) over `sponsor.as.showAs` (the role, e.g. "Government"), falling back to `"Unknown"`
+- `longTitleEn`/`longTitleGa` fall back to the short title variants when absent
 
-**File:** `src/api/bills.ts`
+### Data hooks (`src/hooks/useBills.ts`)
 
-The Oireachtas API at `https://api.oireachtas.ie/v1/legislation` returns a deeply nested JSON structure. A crucial detail is how sponsors are structured:
+**`useBills({ page, pageSize, typeFilter? })`** — server-paginated query. Converts `page`/`pageSize` into `skip`/`limit` for the API. Results are cached for 5 minutes. Uses `placeholderData: (prev) => prev` so switching pages shows the previous page's data while the next page loads, eliminating layout shift.
 
-```json
-{
-  "bill": {
-    "billNo": "42",
-    "billYear": "2024",
-    "billType": "Public",
-    "status": "First Stage",
-    "shortTitleEn": "Finance Act 2024",
-    "shortTitleGa": "Acht Airgeadais 2024",
-    "originHouse": { "showAs": "Dáil", "uri": "..." },
-    "sponsors": [
-      {
-        "sponsor": {
-          "as": { "showAs": "Government", "uri": "..." },
-          "by": { "showAs": "Micheál Martin", "uri": "..." }
-        }
-      }
-    ],
-    "uri": "http://data.oireachtas.ie/ie/oireachtas/bill/2024/42"
-  }
-}
-```
+**`useBillTypes()`** — fetches the first 1000 bills and returns the deduplicated, non-empty set of `billType` strings. Cached for 30 minutes since bill types change rarely. Returns `string[]` directly (not a query object).
 
-Key points:
-- Each sponsor entry wraps in `{ sponsor: { as, by? } }` — note the nested `sponsor` key
-- `as` = the role/capacity (e.g. "Government")
-- `by` = the individual person (absent for government bills, present for Private Members' Bills)
-- We prefer `by.showAs` (the person's name) and fall back to `as.showAs` (the role)
+### Favourites (`src/context/FavouritesContext.tsx`)
 
-The `mapBillRecord()` function transforms this into a flat `Bill` domain model:
+Client-side only. State is held in a `Record<billId, FavouriteEntry>` in React context, managed via `useReducer`-style `setEntries`. Exposes:
 
-```ts
-function extractSponsorName(sponsors: ApiSponsorEntry[]): string {
-  if (!sponsors || sponsors.length === 0) return "Unknown";
-  const first = sponsors[0].sponsor;
-  return first.by?.showAs ?? first.as?.showAs ?? "Unknown";
-}
-```
+- `toggle(bill)` — adds if absent, removes if present (pure key deletion, no soft-delete)
+- `isFavourite(billId)` — `billId in entries`, memoised with `useCallback`
+- `favourites` — `Bill[]` derived from entries, memoised with `useMemo`
+- `favouriteIds` — `string[]` of keys, memoised with `useMemo`
 
-**API filter parameters** (not the display labels):
+Favourites are not persisted to `localStorage` or any backend. They reset on page refresh. The `FavouriteEntry` type has a `status` field (`"idle" | "loading" | "success" | "error"`) that is reserved for a future persistence layer.
 
-| UI Label | API param | Values |
-|---|---|---|
-| Bill Type | `bill_type` | `pub`, `pri`, `pmb` |
-| Status | `bill_status` | `Current`, `Enacted`, `Lapsed`, `Withdrawn`, `Defeated` |
-| House | `chamber_id` | `dail`, `seanad` |
+### BillsTable (`src/components/BillsTable.tsx`)
+
+The main page component. Combines server-paginated "All Bills" with client-side "Favourites" in a single tabbed view. Key design decisions:
+
+- Each tab (`all` / `favourites`) maintains its own independent `PaginationState` (page + pageSize), so switching tabs doesn't reset either tab's position.
+- The "All Bills" tab is server-paginated via `useBills`. The type filter is forwarded to the API as `bill_type`.
+- The "Favourites" tab pulls entirely from `FavouritesContext` and paginates/filters client-side — no network request.
+- `getStatusColor` maps bill status strings to MUI chip colour tokens (`success`, `error`, `warning`, `primary`, `default`). It matches substrings deliberately (e.g. `"enact"` catches "Enacted", "Pre-enactment") to handle API value variance.
+- Skeleton rows are generated with `Array.from({ length: pagination.pageSize })` so the loading state matches the expected row count exactly.
+- Table rows are keyboard-accessible: `tabIndex={0}` + `onKeyDown` for `Enter`/`Space`, plus `:focus-visible` outline styling.
+- The star column uses `e.stopPropagation()` on its cell click to prevent toggling a favourite from also opening the bill modal.
+
+### BillModal (`src/components/modal/BillModal.tsx`)
+
+Opens in a MUI `Dialog` when a table row is clicked. Closes by resetting the tab state back to English (`setTab("en")`) before calling `onClose`, so re-opening the modal always starts on the English tab. Integrates `FavouriteButton` directly, reading from and writing to `FavouritesContext`. Displays both English and Gaeilge titles via a tab switcher, with fallback copy for missing content.
+
+### FavouriteButton (`src/components/favorite/FavouriteButton.tsx`)
+
+A `memo`-wrapped `IconButton` that renders a filled or outlined star. Uses `aria-pressed` for toggle semantics and a dynamic `aria-label` that includes the bill number so screen reader announcements are specific ("Add 42/2024 to favourites"). Stops click propagation so it can safely sit inside a clickable table row.
+
+### Theme (`src/styles/theme.ts`)
+
+MUI theme with a parliamentary blue primary (`#1a4b8c`), Oireachtas green secondary (`#2e7d32`), and amber warning for the favourite star. Overrides `MuiTab`, `MuiButton`, `MuiChip`, `MuiDialog`, `MuiTableCell`, and `MuiTablePagination` to enforce consistent font weight, border radius, and text transform.
 
 ---
 
-### TypeScript Generics & `infer`
+## Type system (`src/types.ts`)
 
-**File:** `src/types/index.ts`
+Three layers:
 
-The `InferFetchResult<T>` utility type uses TypeScript's `infer` keyword to extract the resolved return type of any async function. This means derived types stay in sync with API functions automatically:
+**Raw API types** (`ApiSponsorEntry`, `BillRecord`, `BillsApiResponse`) — match the exact JSON shape returned by `api.oireachtas.ie/v1/legislation`. The sponsor structure is `{ sponsor: { as: {...}, by?: {...} } }` — the nested `sponsor` key is easy to miss and `by` is absent for Government bills.
 
-```ts
-export type InferFetchResult<T extends (...args: never[]) => Promise<unknown>> =
-  T extends (...args: never[]) => Promise<infer R> ? R : never;
+**Domain model** (`Bill`) — a flat, nullable-free object produced by `mapBillRecord`. This is the type used everywhere in the UI.
 
-// BillsData is always the resolved type of fetchBills — no manual annotation
-export type BillsData = InferFetchResult<typeof fetchBills>;
-// → BillsApiResponse
-```
-
-Other generic utility types:
-
-```ts
-// All properties required and non-nullable
-type RequiredNonNullable<T> = { [K in keyof T]-?: NonNullable<T[K]> };
-
-// Extract element type from an array
-type ArrayElement<T extends readonly unknown[]> =
-  T extends ReadonlyArray<infer E> ? E : never;
-```
-
-The `ColumnDef<TData>` type is also generic — `DataTable<Bill>` uses `ColumnDef<Bill>[]`, while `DataTable<Member>` would use `ColumnDef<Member>[]`:
-
-```ts
-export interface ColumnDef<TData> {
-  key: string;
-  header: string;
-  sortKey?: string | false;
-  cell: (row: TData) => React.ReactNode;
-  minWidth?: string;
-  width?: string;
-}
-```
-
-The `useGenericFetch<T>` hook demonstrates the same pattern:
-
-```ts
-export function useGenericFetch<T>(
-  options: UseQueryOptions<T>,
-): UseQueryResult<T> {
-  return useQuery<T>(options);
-}
-
-// Callers get full type inference without annotating
-const result = useGenericFetch<PaginatedResult<Bill>>({
-  queryKey: ["bills"],
-  queryFn: async () => { ... },
-});
-// result.data is PaginatedResult<Bill> | undefined
-```
-
----
-
-### Custom Generic DataTable
-
-**File:** `src/components/table/DataTable.tsx`
-
-Built entirely from scratch without TanStack Table. Separates table mechanics from domain logic.
-
-**Core concept:** column definitions are pure configuration objects. The table renders them — it has no knowledge of bills, members, or any other domain.
-
-```ts
-interface ColumnDef<TData> {
-  key: string;           // unique column identifier
-  header: string;        // displayed header text
-  sortKey?: string | false;  // false = not sortable
-  cell: (row: TData) => React.ReactNode;  // render function
-  minWidth?: string;
-  width?: string;
-}
-```
-
-**Usage:**
-
-```tsx
-const columns: ColumnDef<Bill>[] = [
-  {
-    key: "billNoDisplay",
-    header: "Bill No.",
-    sortKey: "billNo",
-    cell: (bill) => <strong>{bill.billNoDisplay}</strong>,
-  },
-  {
-    key: "favourite",
-    header: "",
-    sortKey: false,    // not sortable
-    cell: (bill) => <FavouriteButton ... />,
-  },
-];
-
-<DataTable<Bill>
-  columns={columns}
-  data={bills}
-  rowCount={total}
-  pagination={pagination}
-  onPaginationChange={setPagination}
-  getRowKey={(bill) => bill.id}
-  onRowClick={(bill) => openModal(bill)}
-/>
-```
-
-**Features built into the table:**
-- Server-side pagination with MUI `TablePagination`
-- Controlled sort state — column headers show sort indicators
-- Skeleton rows during loading (using MUI `Skeleton`)
-- Error state with `role="alert"`
-- Empty state slot (customisable)
-- Background-refresh indicator (spinner + "Refreshing…" text)
-- Keyboard-navigable rows (`role="button"`, `tabIndex={0}`, `Enter`/`Space` handlers)
-- Full ARIA semantics (`aria-label`, `aria-busy`, `aria-rowcount`, `aria-sort`)
-- `React.memo` on `SkeletonRows` to avoid unnecessary re-renders
-
-**Reusability:** This component can be dropped into any project that needs a sortable, paginated, accessible data table. Pass in different `ColumnDef<T>` arrays to render any domain object.
-
----
-
-### FavouritesContext — useReducer + Context
-
-**File:** `src/context/FavouritesContext.tsx`
-
-Global favourites state is managed with `useReducer` for explicit, traceable transitions and `Context` for subscription without prop drilling.
-
-**State shape:**
-
-```ts
-interface FavouritesState {
-  entries: Record<string, FavouriteEntry>;      // billId → entry
-  previousValues: Record<string, boolean>;       // billId → pre-toggle value (for revert)
-}
-
-interface FavouriteEntry {
-  billId: string;
-  isFavourite: boolean;
-  status: FavouriteStatus;  // "idle" | "loading" | "success" | "error"
-}
-```
-
-**Actions:**
-
-| Action | When | Effect |
-|---|---|---|
-| `HYDRATE` | On mount | Loads saved IDs from localStorage |
-| `OPTIMISTIC_TOGGLE` | User clicks star | Immediately flips `isFavourite`, sets status `"loading"`, saves previous value |
-| `TOGGLE_SUCCESS` | Server responds OK | Sets status `"success"`, clears previous value |
-| `TOGGLE_ERROR` | Server fails | Reverts `isFavourite` to saved previous value, sets status `"error"` |
-
-**Optimistic update flow:**
-
-```
-User clicks ★
-    → dispatch OPTIMISTIC_TOGGLE
-    → UI shows new state immediately (loading spinner)
-    → call toggleFavouriteBillApi(billId, nextValue)
-        → success: dispatch TOGGLE_SUCCESS
-        → error:   dispatch TOGGLE_ERROR → revert to previousValue
-```
-
-**localStorage:**
-- Hydrated once on mount via `useEffect`
-- Persisted on every change to `favouriteIds` via a separate `useEffect`
-- The `STORAGE_KEY` constant (`"oireachtas_favourites"`) is exported for tests
-- Handles corrupt JSON gracefully (returns `[]`)
-
----
-
-### FavouriteButton — Stateless Presentational
-
-**File:** `src/components/favorite/FavouriteButton.tsx`
-
-A pure presentational component — all state is passed via props. This makes it:
-
-- **Testable in isolation** — no context dependencies in the component itself
-- **Reusable** — works with any server state library
-- **Predictable** — given the same props, renders the same output
-
-```tsx
-<FavouriteButton
-  isFavourite={isFavourite(bill.id)}
-  status={getStatus(bill.id)}
-  onToggle={() => void toggle(bill.id)}
-  itemLabel={`Bill ${bill.billNoDisplay}`}
-  size="small"
-/>
-```
-
-**States rendered:**
-
-| `isFavourite` | `status` | Rendered |
-|---|---|---|
-| false | idle | Empty star icon |
-| true | idle | Filled amber star |
-| any | loading | Circular progress spinner |
-| any | error | Error icon (click to retry) |
-
-**Accessibility:**
-- `aria-pressed` reflects current favourite state
-- `aria-label` describes the action ("Add Bill 42/2024 to favourites")
-- `e.stopPropagation()` on click/keydown prevents table row click from firing simultaneously
-- `Tooltip` provides visual hover label for sighted users
-
----
-
-### TanStack Query — Server State
-
-**File:** `src/hooks/useBills.ts`
-
-TanStack Query handles all server state concerns:
-
-- **Caching**: repeated requests for the same filters/page return instantly from cache
-- **Background refresh**: stale data is automatically refetched without blocking UI
-- **Placeholder data**: previous page's data is shown while the next page loads (no blank flash)
-- **Retry**: failed requests automatically retry twice before surfacing an error
-
-```ts
-export function useBills({ pagination, filters }: UseBillsOptions) {
-  return useGenericFetch<PaginatedResult<Bill>>({
-    queryKey: ["bills", apiParams],  // cache key — changes trigger refetch
-    queryFn: async () => { ... },
-    placeholderData: (prev) => prev,  // show previous data while loading
-    staleTime: 1000 * 60 * 5,         // 5 minutes before background refetch
-  });
-}
-```
-
-The query key includes all filter parameters, so changing any filter triggers a fresh fetch automatically.
-
----
-
-### Filters
-
-**File:** `src/components/table/BillsTable.tsx`
-
-Four filters are available on the "All Bills" tab:
-
-| Filter | Implementation | Notes |
-|---|---|---|
-| **Search** | Client-side, on title/sponsor/bill no | The API has no free-text search endpoint |
-| **Bill Type** | Server-side via `bill_type` param | `pub` / `pri` / `pmb` |
-| **Status** | Server-side via `bill_status` param | `Current`, `Enacted`, `Lapsed`, etc. |
-| **House** | Server-side via `chamber_id` param | `dail` / `seanad` |
-
-All active filters are displayed as removable chips below the filter row. A "Clear all" chip removes all filters at once. Every filter change resets the page index to 0 to avoid showing an empty page.
-
----
-
-### Accessibility
-
-Accessibility is a first-class concern throughout the application:
-
-**App-level:**
-- Skip-to-main-content link (visible on focus at top of page)
-- ARIA landmark regions: `role="banner"` (header), `role="main"` (content), `role="contentinfo"` (footer)
-- Page `<title>` describes the content
-- Google Fonts `preconnect` and `display=swap` for font performance
-
-**Table:**
-- `<table aria-label="Bills list" aria-busy={isLoading} aria-rowcount={total}>`
-- `<th scope="col">` with `aria-sort` attributes for sorted columns
-- Clickable rows: `role="button"`, `tabIndex={0}`, `onKeyDown` for `Enter`/`Space`
-- `role="alert"` on error cell for screen reader announcement
-- Skeleton rows: `aria-hidden="true"` so screen readers skip them
-- Background refresh: `role="status" aria-live="polite"` for non-disruptive announcement
-
-**Modal:**
-- `role="dialog"`, `aria-modal="true"`, `aria-labelledby` pointing to `<DialogTitle>`
-- Focus management handled by MUI Dialog
-- Close button: explicit `aria-label="Close bill details"`
-- Tabs: `id`, `aria-controls`, `aria-selected`, `aria-labelledby` on panels
-
-**Filters:**
-- Each `<Select>` has a `<InputLabel>` linked via `labelId`/`id`
-- Chip delete buttons have descriptive `aria-label` ("Remove filter: Public")
-- Search field: `inputProps={{ "aria-label": "Search bills" }}`
-
-**FavouriteButton:**
-- `aria-pressed` (boolean) indicates toggle state to screen readers
-- `aria-label` dynamically describes the action ("Add Bill 42/2024 to favourites")
-- Loading state: button is `disabled`; loading progress has `aria-hidden="true"`
-
----
-
-### Responsiveness
-
-The application is responsive across all viewports:
-
-- **Filter row:** wraps from horizontal `row` to vertical `column` on `xs` screens
-- **Table:** `overflowX: "auto"` ensures horizontal scroll on small screens without breaking layout
-- **Modal:** `fullWidth maxWidth="sm"` — takes available width on mobile
-- **Typography in header:** supplementary tagline hidden on `xs` via `display: { xs: "none", sm: "block" }`
-- **TablePagination:** toolbar wraps on narrow viewports
-
----
-
-## API Response Shape
-
-The full response from `GET /v1/legislation?limit=20&skip=0`:
-
-```json
-{
-  "head": {
-    "counts": {
-      "billCount": 4823
-    }
-  },
-  "results": [
-    {
-      "bill": {
-        "billNo": "42",
-        "billYear": "2024",
-        "billType": "Public",
-        "status": "First Stage",
-        "shortTitleEn": "Finance Act 2024",
-        "shortTitleGa": "Acht Airgeadais 2024",
-        "longTitleEn": "An Act to provide for...",
-        "longTitleGa": "Acht chun...",
-        "originHouse": {
-          "showAs": "Dáil",
-          "uri": "http://data.oireachtas.ie/ie/oireachtas/house/dail/33"
-        },
-        "sponsors": [
-          {
-            "sponsor": {
-              "as": {
-                "showAs": "Government",
-                "uri": "http://data.oireachtas.ie/..."
-              },
-              "by": {
-                "showAs": "Micheál Martin",
-                "uri": "http://data.oireachtas.ie/...",
-                "memberCode": "MartM"
-              }
-            }
-          }
-        ],
-        "uri": "http://data.oireachtas.ie/ie/oireachtas/bill/2024/42"
-      }
-    }
-  ]
-}
-```
-
-**Sponsor extraction logic:**
-
-The `sponsor.as` field holds the *role* (e.g. "Government") and `sponsor.by` holds the *person* (e.g. "Micheál Martin"). For government bills, `by` is present with the minister's name. For Private Members' Bills, `by` holds the TD's name. For bills where no individual is identified, only `as` is present.
-
-Our `extractSponsorName` function applies this priority:
-
-```
-by.showAs → as.showAs → "Unknown"
-```
-
-This means government bills show "Micheál Martin" (not "Government"), and private bills where the TD is identified show the TD's name.
+**Utility types** — `InferFetchResult<T>`, `RequiredNonNullable<T>`, `ArrayElement<T>` for deriving types from function signatures and array element extraction without manual repetition.
 
 ---
 
 ## Testing
 
-```bash
-npm run test            # run all tests once
-npm run test:watch      # interactive watch mode
-npm run test:coverage   # with coverage HTML report
+66 tests across 6 files. All tests run in a jsdom environment via Vitest.
+
+```
+src/api/api.test.ts                      16 tests
+src/hooks/useBills.test.tsx              10 tests
+src/context/FavouritesContext.test.tsx    7 tests
+src/components/favorite/
+  FavouriteButton.test.tsx                7 tests
+src/components/modal/
+  BillModal.test.tsx                     12 tests
+src/components/
+  BillsTable.test.tsx                    14 tests
 ```
 
-### Test files
+### Setup (`src/setupTests.ts`)
 
-| File | Tests | What is covered |
-|---|---|---|
-| `bills.test.ts` | 12 | `mapBillRecord` — all fields, sponsor extraction logic, fallbacks |
-| `FavouriteButton.test.tsx` | 9 | ARIA states, click, keyboard, disabled, error, propagation |
-| `FavouritesContext.test.tsx` | 9 | Optimistic toggle, server confirm/revert, localStorage persist/hydrate/unfavourite |
-| `DataTable.test.tsx` | 10 | Headers, rows, skeleton, empty, error, click, keyboard, pagination, aria-label |
-| `BillModal.test.tsx` | 9 | Tab switching, close, favourite button, sponsor, house, null/closed states |
+Registers `@testing-library/jest-dom` matchers, runs `cleanup()` after every test, and stubs `localStorage`, `IntersectionObserver`, and `ResizeObserver` globally (the latter two are used by MUI internally).
 
-### localStorage tests (in `FavouritesContext.test.tsx`)
+### api.test.ts
 
-The three tests that previously failed are now robust:
+Tests `fetchBills` by stubbing `global.fetch` with `vi.stubGlobal` per test (stubbed in `beforeEach`, restored in `afterEach` via `vi.unstubAllGlobals`). Verifies:
+- Correct endpoint path and default params
+- Custom `limit`/`skip` forwarding
+- `bill_type` included when provided, omitted when absent
+- Parsed response body returned as-is
+- Non-2xx responses throw with status code in the message
 
-**"persists favourites to localStorage after server confirms"**
-Uses `waitFor` to poll localStorage after the mock API resolves, ensuring the `useEffect` that persists favouriteIds has run.
+Tests `mapBillRecord` as a pure function against a `buildRecord()` fixture helper. Covers:
+- Basic field mapping
+- `billNoDisplay` format with and without year
+- `longTitle` → `shortTitle` fallback chain
+- Sponsor resolution: named TD preferred, role as fallback, "Unknown" when no sponsors
+- `originHouse` absent case
 
-**"can unfavourite a bill and removes it from localStorage"**
-Pre-seeds localStorage with `["bill-1"]`, waits for hydration, then toggles off. Waits for the bill ID to be absent from localStorage.
+### useBills.test.tsx
 
-**"hydrates from localStorage on mount"**
-Pre-seeds localStorage with two IDs. Waits for the hydration `useEffect` to fire and for the component to reflect the loaded state.
+`fetchBills` is mocked via `vi.mock` (keeping `mapBillRecord` as the real implementation via `importActual`). Each test gets a fresh `QueryClient` via a `createWrapper()` factory to prevent cache bleeding between tests. Uses `renderHook` + `waitFor` from `@testing-library/react`. Covers:
+- `bills` array and `total` mapped correctly from API response
+- `page`/`pageSize` → `limit`/`skip` arithmetic
+- `typeFilter` forwarded as `bill_type`; empty string sends `undefined`
+- Query error exposed on `result.current.error`
+- Changing `page` triggers a second fetch (query key includes `page`)
+- `useBillTypes` deduplicates and filters empty strings
+- `useBillTypes` returns `[]` before the query resolves
 
-**"handles corrupt localStorage gracefully"**
-Sets an invalid JSON string. Verifies the component starts with empty state without throwing.
+### FavouritesContext.test.tsx
 
-**"does not write to localStorage if server errors"**
-Mocks the API to reject. After the revert, verifies the bill is not in localStorage.
+No mocking needed — renders `useFavourites` inside a real `FavouritesProvider` wrapper. All state mutations go through `act()`. Covers:
+- Throws outside provider
+- Starts empty
+- `toggle` adds a bill
+- `toggle` removes a bill already present
+- Multiple bills tracked independently; removing one doesn't affect others
+- `isFavourite` returns false for IDs never added
 
-### Test infrastructure
+### FavouriteButton.test.tsx
 
-- `src/test/setup.ts` — imports `@testing-library/jest-dom`, cleans up after each test, mocks `ResizeObserver` and `IntersectionObserver` as proper class constructors (required for MUI Tabs)
-- `src/test/utils.tsx` — `renderWithProviders` wraps components with `QueryClientProvider`, `ThemeProvider`, and `FavouritesProvider`
-- `vitest.config.ts` — inlines MUI packages to resolve ESM/CJS conflicts in the test environment
+Uses `render` + `screen` + `userEvent.setup()`. MUI icon presence checked via MUI's auto-generated `data-testid` (`StarIcon` / `StarBorderIcon`). Covers:
+- Correct icon shown for each state
+- `aria-label` includes bill title and correct verb ("Add" / "Remove")
+- `aria-pressed` attribute reflects state
+- Default `billTitle` fallback ("bill")
+- `onToggle` called once on click
+- Click does not propagate to a parent `onClick` handler (simulating a table row)
+
+### BillModal.test.tsx
+
+Wrapped in `FavouritesProvider` (real, not mocked) since `BillModal` calls `useFavourites` directly. Queries work against `document.body` since MUI `Dialog` renders into a portal. Uses a `renderModal()` helper that provides defaults and returns the `onClose` mock. Covers:
+- Renders nothing when `bill` is null
+- Content hidden when `open` is false
+- Bill number, type, status displayed
+- Sponsor shown; em dash when empty
+- English long title shown by default
+- Falls back to short title; then to placeholder copy
+- Gaeilge tab switch shows correct title and hides English content
+- Gaeilge placeholder when both Gaeilge titles absent
+- Close button calls `onClose`
+- Closing after switching to Gaeilge tab resets to English on next open (verified by closing then re-testing the initial render state)
+- Favourite button toggles state end-to-end (aria-label flips after click)
+
+### BillsTable.test.tsx
+
+`useBills` and `useBillTypes` are mocked at the module level. `FavouritesProvider` is real. Each test gets a fresh `QueryClient`. A `mockUseBillsResult()` helper provides sensible defaults so individual tests only override what they need. Covers:
+- Skeleton row count matches current `pageSize` (20 by default)
+- Error message shown on query failure
+- Empty state for all-bills tab
+- Rows rendered with number, type, status, sponsor, and em dash fallback
+- Clicking a row opens the modal
+- `Enter` key on a focused row opens the modal
+- Clicking the star inside a row does not open the modal
+- Favourites tab shows count badge once a bill is starred
+- Favourited bill appears on Favourites tab
+- Favourites empty state when nothing starred
+- Type filter dropdown shows options from `useBillTypes`
+- Selecting a type filter calls `useBills` with `typeFilter` set and `page` reset to 0
+- Favourites tab filters client-side: favouriting two bills of different types, then filtering by one type, hides the other
+
+#### Known accessibility issue in BillsTable
+
+The "Bill type" `Select`/`InputLabel` pair does not have a programmatic label association. MUI requires explicit `labelId`/`id` props to link them — without these, the `combobox` element has no accessible name and screen readers will not announce "Bill type" when the control is focused. The filter tests work around this with `getAllByRole("combobox")[0]`.
+
+The fix is:
+
+```tsx
+<InputLabel id="bill-type-label">Bill type</InputLabel>
+<Select labelId="bill-type-label" ...>
+```
 
 ---
 
-## Linting & Formatting
+## Known limitations
 
-Two complementary tools run in parallel:
-
-### Biome (`biome.json`)
-
-Handles formatting and most lint rules. Key configuration:
-
-```json
-{
-  "formatter": {
-    "indentStyle": "space",
-    "indentWidth": 2,
-    "lineWidth": 100
-  },
-  "javascript": {
-    "formatter": {
-      "quoteStyle": "double",
-      "trailingCommas": "all",
-      "semicolons": "always"
-    }
-  }
-}
-```
-
-```bash
-npm run lint:biome    # check
-npm run lint:fix      # auto-fix
-```
-
-### oxlint (`.oxlintrc.json`)
-
-Catches React hooks violations, exhaustive-deps warnings, and additional a11y rules that complement Biome.
-
-```bash
-npm run lint:oxlint
-```
-
-Both tools run together:
-
-```bash
-npm run lint
-```
+- **Favourites are in-memory only.** They are lost on page refresh. The `FavouriteEntry.status` field is reserved for a future API-backed persistence layer but is not currently used.
+- **`useBillTypes` fetches 1000 bills** to enumerate types client-side. A dedicated types endpoint would be preferable if the API ever exposes one.
+- **No search** — `BillFilters.search` is defined in `types.ts` but not wired to the UI or the API call.
+- **No sort** — `SortState` and `ColumnDef.sortKey` are defined in `types.ts` and `BillsTable` columns have no sort handler yet.
+- **Oireachtas API pagination** — `billCount` in `head.counts` reflects the total matching the filters, not the full dataset. Switching the type filter resets both tab paginations to page 0.

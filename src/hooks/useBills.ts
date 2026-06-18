@@ -37,9 +37,11 @@ export function useBillTypes(): string[] {
     queryKey: ["bill-types"],
     queryFn: async () => {
       const response = await fetchBills({ limit: 1000, skip: 0 });
-      return Array.from(new Set(response.results.map((r) => r.bill.billType ?? "").filter(Boolean)));
+      return Array.from(
+        new Set(response.results.map((r) => r.bill.billType ?? "").filter(Boolean))
+      );
     },
-    staleTime: 1000 * 60 * 30, // types won't change often
+    staleTime: 1000 * 60 * 30,
   });
   return data ?? [];
 }

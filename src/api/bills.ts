@@ -12,8 +12,6 @@ async function apiFetch<T>(endpoint: string, params: Record<string, string> = {}
   return res.json();
 }
 
-// ─── Bills ─────────────────────────────────────────────────────────────────
-
 export interface FetchBillsParams {
   limit?: number;
   skip?: number;

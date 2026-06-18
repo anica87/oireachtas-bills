@@ -1,12 +1,29 @@
-import {
-  Box, Chip, FormControl, IconButton, InputLabel, MenuItem, Paper, Select,
-  Skeleton, Stack, Tab, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Tabs, Tooltip, Typography,
-} from "@mui/material";
 import FirstPageIcon from "@mui/icons-material/FirstPage";
 import LastPageIcon from "@mui/icons-material/LastPage";
 import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
+import {
+  Box,
+  Chip,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Skeleton,
+  Stack,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Tabs,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { useState } from "react";
 import { FavouriteButton } from "@/components/favorite/FavouriteButton";
 import { BillModal } from "@/components/modal/BillModal";
@@ -17,8 +34,7 @@ import type { Bill } from "@/types";
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
 
-const SKELETON_ROWS = ["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t"];
-const SKELETON_COLS = ["a","b","c","d","e"];
+const TABLE_COLUMNS = 5;
 
 type TabValue = "all" | "favourites";
 
@@ -56,7 +72,13 @@ function TablePaginationControls({
   const to = Math.min((page + 1) * pageSize, total);
 
   return (
-    <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={1} sx={{ px: 2, py: 1 }}>
+    <Stack
+      direction="row"
+      alignItems="center"
+      justifyContent="flex-end"
+      spacing={1}
+      sx={{ px: 2, py: 1 }}
+    >
       <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
         Rows per page:
       </Typography>
@@ -67,11 +89,17 @@ function TablePaginationControls({
         sx={{ fontSize: 14 }}
       >
         {PAGE_SIZE_OPTIONS.map((n) => (
-          <MenuItem key={n} value={n}>{n}</MenuItem>
+          <MenuItem key={n} value={n}>
+            {n}
+          </MenuItem>
         ))}
       </Select>
 
-      <Typography variant="body2" color="text.secondary" sx={{ mx: 2, minWidth: 80, textAlign: "center" }}>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ mx: 2, minWidth: 80, textAlign: "center" }}
+      >
         {from}–{to} of {total}
       </Typography>
 
@@ -91,7 +119,11 @@ function TablePaginationControls({
       </Tooltip>
       <Tooltip title="Next page">
         <span>
-          <IconButton size="small" onClick={() => onPageChange(page + 1)} disabled={page >= lastPage}>
+          <IconButton
+            size="small"
+            onClick={() => onPageChange(page + 1)}
+            disabled={page >= lastPage}
+          >
             <NavigateNextIcon fontSize="small" />
           </IconButton>
         </span>
@@ -108,14 +140,14 @@ function TablePaginationControls({
 }
 
 export function BillsTable() {
-  const { isFavourite, toggle, favouriteIds } = useFavourites();
-  const { data: billTypes = [] } = useBillTypes();
+  const { isFavourite, toggle, favourites, favouriteIds } = useFavourites();
+  const billTypes = useBillTypes();
 
   const [tab, setTab] = useState<TabValue>("all");
   const [typeFilter, setTypeFilter] = useState("");
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
 
-  // Independent pagination per tab
+  // each tab keeps its own page/pageSize so switching tabs doesn't reset the other
   const [allPagination, setAllPagination] = useState<PaginationState>({ page: 0, pageSize: 20 });
   const [favPagination, setFavPagination] = useState<PaginationState>({ page: 0, pageSize: 20 });
 
@@ -125,21 +157,24 @@ export function BillsTable() {
   const { data, isLoading, error } = useBills({
     page: allPagination.page,
     pageSize: allPagination.pageSize,
+    typeFilter,
   });
 
   const bills = data?.bills ?? [];
   const total = data?.total ?? 0;
 
-  const filtered = typeFilter ? bills.filter((b) => b.billType === typeFilter) : bills;
+  // favourites live entirely in context, so filter/paginate them client-side
+  const filteredFavourites = typeFilter
+    ? favourites.filter((b) => b.billType === typeFilter)
+    : favourites;
 
-  const favouriteBills = filtered.filter((b) => favouriteIds.includes(b.id));
-  const favouritesPage = favouriteBills.slice(
+  const favouritesPage = filteredFavourites.slice(
     favPagination.page * favPagination.pageSize,
     (favPagination.page + 1) * favPagination.pageSize
   );
 
-  const rows = tab === "favourites" ? favouritesPage : filtered;
-  const rowTotal = tab === "favourites" ? favouriteBills.length : total;
+  const rows = tab === "favourites" ? favouritesPage : bills;
+  const rowTotal = tab === "favourites" ? filteredFavourites.length : total;
 
   function handleTabChange(_: React.SyntheticEvent, value: TabValue) {
     setTab(value);
@@ -153,15 +188,15 @@ export function BillsTable() {
     setPagination({ page: 0, pageSize });
   }
 
-  const colSpan = 5;
+  function handleTypeFilterChange(value: string) {
+    setTypeFilter(value);
+    setAllPagination((p) => ({ ...p, page: 0 }));
+    setFavPagination((p) => ({ ...p, page: 0 }));
+  }
 
   return (
     <Paper elevation={2}>
-      <Tabs
-        value={tab}
-        onChange={handleTabChange}
-        sx={{ borderBottom: 1, borderColor: "divider", px: 2 }}
-      >
+      <Tabs value={tab} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: "divider", px: 2 }}>
         <Tab label="All Bills" value="all" />
         <Tab
           label={`Favourites${favouriteIds.length > 0 ? ` (${favouriteIds.length})` : ""}`}
@@ -175,15 +210,13 @@ export function BillsTable() {
           <Select
             value={typeFilter}
             label="Bill type"
-            onChange={(e) => {
-              setTypeFilter(e.target.value);
-              setAllPagination((p) => ({ ...p, page: 0 }));
-              setFavPagination((p) => ({ ...p, page: 0 }));
-            }}
+            onChange={(e) => handleTypeFilterChange(e.target.value)}
           >
             <MenuItem value="">All types</MenuItem>
             {billTypes.map((type) => (
-              <MenuItem key={type} value={type}>{type}</MenuItem>
+              <MenuItem key={type} value={type}>
+                {type}
+              </MenuItem>
             ))}
           </Select>
         </FormControl>
@@ -204,17 +237,17 @@ export function BillsTable() {
           <TableBody>
             {error ? (
               <TableRow>
-                <TableCell colSpan={colSpan} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={TABLE_COLUMNS} align="center" sx={{ py: 4 }}>
                   <Typography color="error" variant="body2">
                     Failed to load: {error.message}
                   </Typography>
                 </TableCell>
               </TableRow>
             ) : isLoading ? (
-              SKELETON_ROWS.slice(0, pagination.pageSize).map((row) => (
-                <TableRow key={row} aria-hidden="true">
-                  {SKELETON_COLS.map((col) => (
-                    <TableCell key={col}>
+              Array.from({ length: pagination.pageSize }).map((_, i) => (
+                <TableRow key={i} aria-hidden="true">
+                  {Array.from({ length: TABLE_COLUMNS }).map((_, j) => (
+                    <TableCell key={j}>
                       <Skeleton variant="text" width="80%" />
                     </TableCell>
                   ))}
@@ -222,7 +255,7 @@ export function BillsTable() {
               ))
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={colSpan} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={TABLE_COLUMNS} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary" variant="body2">
                     {tab === "favourites"
                       ? "No favourited bills yet — click a star to save one."
@@ -252,7 +285,7 @@ export function BillsTable() {
                   <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
                     <FavouriteButton
                       isFavourite={isFavourite(bill.id)}
-                      onToggle={() => toggle(bill.id)}
+                      onToggle={() => toggle(bill)}
                       billTitle={bill.billNoDisplay}
                     />
                   </TableCell>
