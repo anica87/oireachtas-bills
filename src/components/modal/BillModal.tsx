@@ -38,7 +38,13 @@ export function BillModal({ bill, open, onClose }: BillModalProps) {
         <>
           <DialogTitle
             component="div"
-            sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1, pr: 1 }}
+            sx={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 1,
+              pr: 1,
+            }}
           >
             <Box>
               <Typography variant="h6" component="h2" fontWeight={700}>
@@ -65,8 +71,12 @@ export function BillModal({ bill, open, onClose }: BillModalProps) {
           <Divider />
 
           <DialogContent>
-            <Typography variant="caption" color="text.secondary" fontWeight={600}>SPONSOR</Typography>
-            <Typography variant="body2" sx={{ mb: 2 }}>{bill.sponsor || "—"}</Typography>
+            <Typography variant="caption" color="text.secondary" fontWeight={600}>
+              SPONSOR
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              {bill.sponsor || "—"}
+            </Typography>
 
             <Tabs value={tab} onChange={(_, v) => setTab(v)}>
               <Tab label="English" value="en" />
@@ -75,9 +85,13 @@ export function BillModal({ bill, open, onClose }: BillModalProps) {
 
             <Box sx={{ pt: 2 }}>
               {tab === "en" ? (
-                <Typography>{bill.longTitleEn || bill.shortTitleEn || "No English title available."}</Typography>
+                <Typography>
+                  {bill.longTitleEn || bill.shortTitleEn || "No English title available."}
+                </Typography>
               ) : (
-                <Typography>{bill.longTitleGa || bill.shortTitleGa || "Níl teideal Gaeilge ar fáil."}</Typography>
+                <Typography>
+                  {bill.longTitleGa || bill.shortTitleGa || "Níl teideal Gaeilge ar fáil."}
+                </Typography>
               )}
             </Box>
           </DialogContent>

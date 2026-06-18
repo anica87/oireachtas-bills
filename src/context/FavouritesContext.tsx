@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -54,7 +54,10 @@ export function FavouritesProvider({ children }: { children: ReactNode }) {
   );
 
   const favouriteIds = useMemo(
-    () => Object.entries(state.entries).filter(([, e]) => e.isFavourite).map(([id]) => id),
+    () =>
+      Object.entries(state.entries)
+        .filter(([, e]) => e.isFavourite)
+        .map(([id]) => id),
     [state],
   );
 

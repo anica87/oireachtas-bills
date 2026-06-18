@@ -26,7 +26,9 @@ export const FavouriteButton = memo(function FavouriteButton({
   return (
     <Tooltip title={isFavourite ? "Remove from favourites" : "Add to favourites"} arrow>
       <IconButton
-        aria-label={isFavourite ? `Remove ${billTitle} from favourites` : `Add ${billTitle} to favourites`}
+        aria-label={
+          isFavourite ? `Remove ${billTitle} from favourites` : `Add ${billTitle} to favourites`
+        }
         aria-pressed={isFavourite}
         onClick={handleClick}
         size="small"

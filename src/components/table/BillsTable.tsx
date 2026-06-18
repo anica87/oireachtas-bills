@@ -51,9 +51,7 @@ export function BillsTable() {
   const total = data?.total ?? 0;
   const billTypes = Array.from(new Set(bills.map((b) => b.billType)));
 
-  const rows = tab === "favourites"
-    ? bills.filter((b) => favouriteIds.includes(b.id))
-    : bills;
+  const rows = tab === "favourites" ? bills.filter((b) => favouriteIds.includes(b.id)) : bills;
 
   function handleTabChange(_: React.SyntheticEvent, value: "all" | "favourites") {
     setTab(value);
@@ -91,7 +89,9 @@ export function BillsTable() {
           >
             <MenuItem value="">All types</MenuItem>
             {billTypes.map((t) => (
-              <MenuItem key={t} value={t}>{t}</MenuItem>
+              <MenuItem key={t} value={t}>
+                {t}
+              </MenuItem>
             ))}
           </Select>
         </FormControl>
@@ -120,9 +120,13 @@ export function BillsTable() {
               </TableRow>
             ) : isLoading ? (
               Array.from({ length: pageSize }, (_, i) => (
+                /* biome-ignore lint/suspicious/noArrayIndexKey: skeleton rows are static */
                 <TableRow key={i} aria-hidden="true">
                   {Array.from({ length: colSpan }, (_, j) => (
-                    <TableCell key={j}><Skeleton variant="text" width="80%" /></TableCell>
+                    /* biome-ignore lint/suspicious/noArrayIndexKey: skeleton rows are static */
+                    <TableCell key={`skeleton-${i}-${j}`}>
+                      <Skeleton variant="text" width="80%" />
+                    </TableCell>
                   ))}
                 </TableRow>
               ))
@@ -143,8 +147,17 @@ export function BillsTable() {
                   hover
                   tabIndex={0}
                   onClick={() => setSelectedBill(bill)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSelectedBill(bill); }}
-                  sx={{ cursor: "pointer", "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "-2px" } }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") setSelectedBill(bill);
+                  }}
+                  sx={{
+                    cursor: "pointer",
+                    "&:focus-visible": {
+                      outline: "2px solid",
+                      outlineColor: "primary.main",
+                      outlineOffset: "-2px",
+                    },
+                  }}
                 >
                   <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
                     <FavouriteButton
@@ -154,7 +167,9 @@ export function BillsTable() {
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" fontWeight={700}>{bill.billNoDisplay}</Typography>
+                    <Typography variant="body2" fontWeight={700}>
+                      {bill.billNoDisplay}
+                    </Typography>
                   </TableCell>
                   <TableCell>
                     <Chip label={bill.billType} size="small" variant="outlined" />
@@ -177,7 +192,10 @@ export function BillsTable() {
         rowsPerPage={pageSize}
         rowsPerPageOptions={PAGE_SIZE_OPTIONS}
         onPageChange={(_, p) => setPage(p)}
-        onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
+        onRowsPerPageChange={(e) => {
+          setPageSize(parseInt(e.target.value, 10));
+          setPage(0);
+        }}
       />
 
       <BillModal bill={selectedBill} open={!!selectedBill} onClose={() => setSelectedBill(null)} />
