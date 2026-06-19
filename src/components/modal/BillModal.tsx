@@ -40,8 +40,8 @@ export function BillModal({ bill, open, onClose }: BillModalProps) {
             component="div"
             sx={{
               display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
+              alignitems: "flex-start",
+              justifycontent: "space-between",
               gap: 1,
               pr: 1,
             }}

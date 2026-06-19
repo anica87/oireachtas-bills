@@ -28,7 +28,8 @@ import { useState } from "react";
 import { FavouriteButton } from "@/components/favorite/FavouriteButton";
 import { BillModal } from "@/components/modal/BillModal";
 import { useFavourites } from "@/context/FavouritesContext";
-import { useBills, useBillTypes } from "@/hooks/useBills";
+import { useBills } from "@/hooks/useBills";
+import { useBillTypes } from "@/hooks/useBillTypes";
 import type { Bill } from "@/types";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
@@ -74,8 +75,8 @@ function TablePaginationControls({
   return (
     <Stack
       direction="row"
-      alignItems="center"
-      justifyContent="flex-end"
+      alignitems="center"
+      justifycontent="flex-end"
       spacing={1}
       sx={{ px: 2, py: 1 }}
     >
@@ -155,8 +156,8 @@ export function BillsTable() {
   const setPagination = tab === "all" ? setAllPagination : setFavPagination;
 
   const { data, isLoading, error } = useBills({
-    page: allPagination.page,
-    pageSize: allPagination.pageSize,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
     typeFilter,
   });
 
