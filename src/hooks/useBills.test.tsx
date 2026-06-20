@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { FetchBillsParams } from "@/api/bills";
 import { fetchBills } from "@/api/bills";
 import type { BillRecord } from "@/types";
 import { useBills } from "./useBills";
@@ -42,7 +43,9 @@ function createWrapper() {
 }
 
 function findCall(limit: number, skip: number) {
-  return mockedFetchBills.mock.calls.find(([args]) => args.limit === limit && args.skip === skip);
+  return mockedFetchBills.mock.calls.find(
+    ([args]: [FetchBillsParams?]) => args?.limit === limit && args?.skip === skip,
+  );
 }
 
 describe("useBills", () => {
@@ -150,7 +153,7 @@ describe("useBills", () => {
     });
 
     it("still returns the unfiltered/paginated data as `data` since typeFilter is not set", async () => {
-      mockedFetchBills.mockImplementation(async ({ limit, skip }) => {
+      mockedFetchBills.mockImplementation(async ({ limit, skip } = {}) => {
         if (limit === 20 && skip === 0) {
           return {
             head: { counts: { billCount: 1 } },
@@ -173,7 +176,7 @@ describe("useBills", () => {
 
   describe("typeFilter set (client-side filtering active)", () => {
     it("does not send bill_type to fetchBills — filtering happens client-side via useAllBills", async () => {
-      mockedFetchBills.mockImplementation(async ({ limit, skip }) => {
+      mockedFetchBills.mockImplementation(async ({ limit, skip } = {}) => {
         if (limit === 1000 && skip === 0) {
           return {
             head: { counts: { billCount: 2 } },
@@ -300,7 +303,7 @@ describe("useBills", () => {
 
   describe("falsy typeFilter (empty string)", () => {
     it("treats an empty-string typeFilter as unfiltered (falls back to the paginated path)", async () => {
-      mockedFetchBills.mockImplementation(async ({ limit, skip }) => {
+      mockedFetchBills.mockImplementation(async ({ limit, skip } = {}) => {
         if (limit === 20 && skip === 0) {
           return {
             head: { counts: { billCount: 1 } },

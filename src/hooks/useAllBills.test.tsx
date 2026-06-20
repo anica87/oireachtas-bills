@@ -146,7 +146,7 @@ describe("useAllBills", () => {
         resolveFirst = resolve;
       });
 
-      mockFetchBills.mockImplementation(async ({ skip }) => {
+      mockFetchBills.mockImplementation(async ({ skip = 0 } = {}) => {
         callOrder.push(skip);
         if (skip === 0) {
           // first call resolves immediately and "unlocks" the others
@@ -173,7 +173,7 @@ describe("useAllBills", () => {
     });
 
     it("computes the correct number of batches for a non-exact-multiple total (2500 -> 3 batches)", async () => {
-      mockFetchBills.mockImplementation(async ({ skip }) => {
+      mockFetchBills.mockImplementation(async ({ skip } = {}) => {
         if (skip === 0) return makeApiResponse(batchOf(1000, "a"), 2500);
         if (skip === 1000) return makeApiResponse(batchOf(1000, "b"), 2500);
         if (skip === 2000) return makeApiResponse(batchOf(500, "c"), 2500);
@@ -189,7 +189,7 @@ describe("useAllBills", () => {
     });
 
     it("requests exactly the right number of batches when total is one more than an exact multiple (2001 -> 3 batches)", async () => {
-      mockFetchBills.mockImplementation(async ({ skip }) => {
+      mockFetchBills.mockImplementation(async ({ skip } = {}) => {
         if (skip === 0) return makeApiResponse(batchOf(1000, "a"), 2001);
         if (skip === 1000) return makeApiResponse(batchOf(1000, "b"), 2001);
         if (skip === 2000) return makeApiResponse(batchOf(1, "c"), 2001);
@@ -207,7 +207,7 @@ describe("useAllBills", () => {
     it("preserves first-batch results first, with remaining batches appended in skip order", async () => {
       // total=1001 requires exactly 2 batches: skip=0 (1000 records) and
       // skip=1000 (1 record) -- the boundary case from the off-by-one check
-      mockFetchBills.mockImplementation(async ({ skip }) => {
+      mockFetchBills.mockImplementation(async ({ skip } = {}) => {
         if (skip === 0) return makeApiResponse([makeBillRecord("first")], 1001);
         if (skip === 1000) return makeApiResponse([makeBillRecord("second")], 1001);
         throw new Error(`unexpected skip ${skip}`);
@@ -234,7 +234,7 @@ describe("useAllBills", () => {
     });
 
     it("surfaces an error (all-or-nothing) if any parallel remaining batch fails, even if others succeed", async () => {
-      mockFetchBills.mockImplementation(async ({ skip }) => {
+      mockFetchBills.mockImplementation(async ({ skip } = {}) => {
         if (skip === 0) return makeApiResponse(batchOf(1000, "a"), 3000);
         if (skip === 1000) return makeApiResponse(batchOf(1000, "b"), 3000);
         if (skip === 2000) throw new Error("API error: 503");
@@ -252,7 +252,7 @@ describe("useAllBills", () => {
 
   describe("mapping", () => {
     it("applies mapBillRecord to every record across the first batch and all parallel batches", async () => {
-      mockFetchBills.mockImplementation(async ({ skip }) => {
+      mockFetchBills.mockImplementation(async ({ skip } = {}) => {
         if (skip === 0) return makeApiResponse(batchOf(1000, "a"), 1500);
         if (skip === 1000) return makeApiResponse(batchOf(500, "b"), 1500);
         throw new Error(`unexpected skip ${skip}`);

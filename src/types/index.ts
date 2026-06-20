@@ -1,5 +1,3 @@
-import type React from "react";
-
 // Raw API response shapes
 
 export interface ApiSponsorEntry {

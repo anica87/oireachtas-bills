@@ -8,6 +8,17 @@ vi.mock("./useAllBills");
 
 const mockUseAllBills = vi.mocked(useAllBills);
 
+// useBillTypes only reads `.data` and `.isLoading` off the useAllBills result,
+// so tests only need to mock those two fields rather than every property of
+// the real (much larger) UseQueryResult type. Casting through `unknown` here
+// — once, in a single helper — documents that this is an intentional partial
+// mock, instead of an `as ReturnType<typeof useAllBills>` at every call site,
+// which TypeScript can't reliably verify has "sufficient overlap" for an
+// arbitrary partial shape (e.g. it rejects `data: []` but not other shapes).
+function mockAllBillsResult(partial: { data: Bill[] | undefined; isLoading: boolean }) {
+  return partial as unknown as ReturnType<typeof useAllBills>;
+}
+
 function makeBill(overrides: Partial<Bill> = {}): Bill {
   return {
     id: "bill-1",
@@ -34,10 +45,12 @@ describe("useBillTypes", () => {
 
   describe("enabled forwarding", () => {
     it("forwards enabled=true to useAllBills when called with no argument (default)", () => {
-      mockUseAllBills.mockReturnValue({
-        data: undefined,
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: undefined,
+          isLoading: false,
+        }),
+      );
 
       renderHook(() => useBillTypes());
 
@@ -45,10 +58,12 @@ describe("useBillTypes", () => {
     });
 
     it("forwards enabled=false through to useAllBills when explicitly passed", () => {
-      mockUseAllBills.mockReturnValue({
-        data: undefined,
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: undefined,
+          isLoading: false,
+        }),
+      );
 
       renderHook(() => useBillTypes(false));
 
@@ -56,10 +71,12 @@ describe("useBillTypes", () => {
     });
 
     it("forwards enabled=true through to useAllBills when explicitly passed", () => {
-      mockUseAllBills.mockReturnValue({
-        data: undefined,
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: undefined,
+          isLoading: false,
+        }),
+      );
 
       renderHook(() => useBillTypes(true));
 
@@ -69,10 +86,12 @@ describe("useBillTypes", () => {
 
   describe("isLoading", () => {
     it("passes through isLoading: true from useAllBills while disabled-but-not-yet-fetched or fetching", () => {
-      mockUseAllBills.mockReturnValue({
-        data: undefined,
-        isLoading: true,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: undefined,
+          isLoading: true,
+        }),
+      );
 
       const { result } = renderHook(() => useBillTypes(true));
 
@@ -81,10 +100,12 @@ describe("useBillTypes", () => {
     });
 
     it("passes through isLoading: false once useAllBills has resolved", () => {
-      mockUseAllBills.mockReturnValue({
-        data: [makeBill()],
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: [makeBill()],
+          isLoading: false,
+        }),
+      );
 
       const { result } = renderHook(() => useBillTypes(true));
 
@@ -94,10 +115,12 @@ describe("useBillTypes", () => {
 
   describe("types derivation", () => {
     it("returns an empty types array while data is undefined", () => {
-      mockUseAllBills.mockReturnValue({
-        data: undefined,
-        isLoading: true,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: undefined,
+          isLoading: true,
+        }),
+      );
 
       const { result } = renderHook(() => useBillTypes());
 
@@ -105,10 +128,12 @@ describe("useBillTypes", () => {
     });
 
     it("returns an empty types array when bills is an empty list", () => {
-      mockUseAllBills.mockReturnValue({
-        data: [],
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: [],
+          isLoading: false,
+        }),
+      );
 
       const { result } = renderHook(() => useBillTypes());
 
@@ -116,15 +141,17 @@ describe("useBillTypes", () => {
     });
 
     it("deduplicates repeated bill types", () => {
-      mockUseAllBills.mockReturnValue({
-        data: [
-          makeBill({ id: "1", billType: "Public" }),
-          makeBill({ id: "2", billType: "Private" }),
-          makeBill({ id: "3", billType: "Public" }),
-          makeBill({ id: "4", billType: "Private" }),
-        ],
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: [
+            makeBill({ id: "1", billType: "Public" }),
+            makeBill({ id: "2", billType: "Private" }),
+            makeBill({ id: "3", billType: "Public" }),
+            makeBill({ id: "4", billType: "Private" }),
+          ],
+          isLoading: false,
+        }),
+      );
 
       const { result } = renderHook(() => useBillTypes());
 
@@ -132,14 +159,16 @@ describe("useBillTypes", () => {
     });
 
     it("filters out falsy (empty-string) bill types", () => {
-      mockUseAllBills.mockReturnValue({
-        data: [
-          makeBill({ id: "1", billType: "Public" }),
-          makeBill({ id: "2", billType: "" }),
-          makeBill({ id: "3", billType: "Private" }),
-        ],
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: [
+            makeBill({ id: "1", billType: "Public" }),
+            makeBill({ id: "2", billType: "" }),
+            makeBill({ id: "3", billType: "Private" }),
+          ],
+          isLoading: false,
+        }),
+      );
 
       const { result } = renderHook(() => useBillTypes());
 
@@ -148,14 +177,16 @@ describe("useBillTypes", () => {
     });
 
     it("preserves first-seen order rather than sorting", () => {
-      mockUseAllBills.mockReturnValue({
-        data: [
-          makeBill({ id: "1", billType: "Withdrawn" }),
-          makeBill({ id: "2", billType: "Amendment" }),
-          makeBill({ id: "3", billType: "Government" }),
-        ],
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: [
+            makeBill({ id: "1", billType: "Withdrawn" }),
+            makeBill({ id: "2", billType: "Amendment" }),
+            makeBill({ id: "3", billType: "Government" }),
+          ],
+          isLoading: false,
+        }),
+      );
 
       const { result } = renderHook(() => useBillTypes());
 
@@ -168,10 +199,12 @@ describe("useBillTypes", () => {
   describe("memoization", () => {
     it("returns the same types array reference across re-renders when bills data is unchanged", () => {
       const sharedBillsArray = [makeBill({ id: "1", billType: "Public" })];
-      mockUseAllBills.mockReturnValue({
-        data: sharedBillsArray,
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: sharedBillsArray,
+          isLoading: false,
+        }),
+      );
 
       const { result, rerender } = renderHook(() => useBillTypes());
 
@@ -185,22 +218,26 @@ describe("useBillTypes", () => {
     });
 
     it("recomputes types when the bills data reference changes", () => {
-      mockUseAllBills.mockReturnValue({
-        data: [makeBill({ id: "1", billType: "Public" })],
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: [makeBill({ id: "1", billType: "Public" })],
+          isLoading: false,
+        }),
+      );
 
       const { result, rerender } = renderHook(() => useBillTypes());
       const firstTypes = result.current.types;
       expect(firstTypes).toEqual(["Public"]);
 
-      mockUseAllBills.mockReturnValue({
-        data: [
-          makeBill({ id: "1", billType: "Public" }),
-          makeBill({ id: "2", billType: "Private" }),
-        ],
-        isLoading: false,
-      } as ReturnType<typeof useAllBills>);
+      mockUseAllBills.mockReturnValue(
+        mockAllBillsResult({
+          data: [
+            makeBill({ id: "1", billType: "Public" }),
+            makeBill({ id: "2", billType: "Private" }),
+          ],
+          isLoading: false,
+        }),
+      );
 
       rerender();
 

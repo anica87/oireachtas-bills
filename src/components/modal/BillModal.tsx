@@ -47,7 +47,7 @@ export function BillModal({ bill, open, onClose }: BillModalProps) {
             }}
           >
             <Box>
-              <Typography variant="h6" component="h2" fontWeight={700}>
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>
                 Bill {bill.billNoDisplay}
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mt: 0.5, flexWrap: "wrap" }}>
@@ -56,7 +56,7 @@ export function BillModal({ bill, open, onClose }: BillModalProps) {
               </Stack>
             </Box>
 
-            <Stack direction="row" alignitems="center" sx={{ flexShrink: 0 }}>
+            <Stack direction="row" sx={{ alignItems: "center", flexShrink: 0 }}>
               <FavouriteButton
                 isFavourite={isFavourite(bill.id)}
                 onToggle={() => toggle(bill)}
@@ -71,7 +71,7 @@ export function BillModal({ bill, open, onClose }: BillModalProps) {
           <Divider />
 
           <DialogContent>
-            <Typography variant="caption" color="text.secondary" fontWeight={600}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
               SPONSOR
             </Typography>
             <Typography variant="body2" sx={{ mb: 2 }}>

@@ -102,10 +102,8 @@ const TablePaginationControls = memo(function TablePaginationControls({
   return (
     <Stack
       direction="row"
-      alignItems="center"
-      justifyContent="flex-end"
       spacing={1}
-      sx={{ px: 2, py: 1 }}
+      sx={{ alignItems: "center", justifyContent: "flex-end", px: 2, py: 1 }}
     >
       <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
         Rows per page:
@@ -307,9 +305,16 @@ export function BillsTable() {
                 </TableCell>
               </TableRow>
             ) : isLoading ? (
+              // Loading skeleton rows: a fixed-length placeholder grid with
+              // no real data identity, that's replaced wholesale (not
+              // reordered or reconciled) the instant the query resolves —
+              // the key-stability concern this rule guards against doesn't
+              // apply here.
               Array.from({ length: pagination.pageSize }).map((_, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: static-length skeleton placeholder, never reordered
                 <TableRow key={i} aria-hidden="true">
                   {Array.from({ length: TABLE_COLUMNS }).map((_, j) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: static-length skeleton placeholder, never reordered
                     <TableCell key={j}>
                       <Skeleton variant="text" width="80%" />
                     </TableCell>
@@ -353,7 +358,7 @@ export function BillsTable() {
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" fontWeight={700}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
                       {bill.billNoDisplay}
                     </Typography>
                   </TableCell>

@@ -58,7 +58,12 @@ describe("FavouriteButton", () => {
     const user = userEvent.setup();
 
     render(
-      // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+      // This <div> is a minimal stand-in for "some parent element with a
+      // click handler" purely to assert stopPropagation() behavior — it's
+      // not meant to be a real interactive/keyboard-accessible element, so
+      // a11y click/keyboard rules don't apply to this test fixture.
+      // biome-ignore lint/a11y/noStaticElementInteractions: test fixture only, not a real UI element
+      // biome-ignore lint/a11y/useKeyWithClickEvents: test fixture only, not a real UI element
       <div onClick={onParentClick}>
         <FavouriteButton isFavourite={false} onToggle={onToggle} />
       </div>,

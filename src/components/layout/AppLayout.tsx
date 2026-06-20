@@ -9,7 +9,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <Container maxWidth="xl">
           <Toolbar disableGutters sx={{ gap: 1.5 }}>
             <GavelIcon aria-hidden="true" />
-            <Typography variant="h6" component="h1" fontWeight={700}>
+            <Typography variant="h6" component="h1" sx={{ fontWeight: 700 }}>
               Oireachtas Bills
             </Typography>
           </Toolbar>
