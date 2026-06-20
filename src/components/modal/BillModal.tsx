@@ -40,8 +40,8 @@ export function BillModal({ bill, open, onClose }: BillModalProps) {
             component="div"
             sx={{
               display: "flex",
-              alignitems: "flex-start",
-              justifycontent: "space-between",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
               gap: 1,
               pr: 1,
             }}
@@ -56,7 +56,7 @@ export function BillModal({ bill, open, onClose }: BillModalProps) {
               </Stack>
             </Box>
 
-            <Stack direction="row" alignItems="center" sx={{ flexShrink: 0 }}>
+            <Stack direction="row" alignitems="center" sx={{ flexShrink: 0 }}>
               <FavouriteButton
                 isFavourite={isFavourite(bill.id)}
                 onToggle={() => toggle(bill)}

@@ -61,7 +61,7 @@ describe("FavouriteButton", () => {
       // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
       <div onClick={onParentClick}>
         <FavouriteButton isFavourite={false} onToggle={onToggle} />
-      </div>
+      </div>,
     );
 
     await user.click(screen.getByRole("button"));

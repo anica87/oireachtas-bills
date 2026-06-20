@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchBills, mapBillRecord } from "@/api/bills";
-import { useAllBills } from "./useAllBills";
 import type { Bill } from "@/types";
+import { useAllBills } from "./useAllBills";
 
 interface BillsResult {
   bills: Bill[];
@@ -19,10 +19,16 @@ interface UseBillsOptions {
   page: number;
   pageSize: number;
   typeFilter?: string;
+  filterTouched?: boolean;
 }
 
-export function useBills({ page, pageSize, typeFilter }: UseBillsOptions): UseBillsReturn {
-  const allBillsQuery = useAllBills();
+export function useBills({
+  page,
+  pageSize,
+  typeFilter,
+  filterTouched,
+}: UseBillsOptions): UseBillsReturn {
+  const allBillsQuery = useAllBills(!!filterTouched);
 
   const unfilteredQuery = useQuery<BillsResult>({
     queryKey: ["bills", page, pageSize],

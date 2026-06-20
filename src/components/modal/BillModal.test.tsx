@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,12 +25,23 @@ function buildBill(overrides: Partial<Bill> = {}): Bill {
   };
 }
 
+/**
+ * FavouritesProvider uses useQuery/useMutation internally (favourites are
+ * stored in the React Query cache rather than useState), so any tree that
+ * renders it needs a QueryClientProvider ancestor — without one, useQueryClient()
+ * throws "No QueryClient set, use QueryClientProvider to set one."
+ */
 function renderModal(props: Partial<React.ComponentProps<typeof BillModal>> = {}) {
   const onClose = vi.fn();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   const utils = render(
-    <FavouritesProvider>
-      <BillModal bill={buildBill()} open={true} onClose={onClose} {...props} />
-    </FavouritesProvider>
+    <QueryClientProvider client={queryClient}>
+      <FavouritesProvider>
+        <BillModal bill={buildBill()} open={true} onClose={onClose} {...props} />
+      </FavouritesProvider>
+    </QueryClientProvider>,
   );
   return { ...utils, onClose };
 }
@@ -40,21 +52,13 @@ describe("BillModal", () => {
   });
 
   it("renders nothing when bill is null", () => {
-    render(
-      <FavouritesProvider>
-        <BillModal bill={null} open={true} onClose={vi.fn()} />
-      </FavouritesProvider>
-    );
+    renderModal({ bill: null });
 
     expect(screen.queryByRole("heading")).not.toBeInTheDocument();
   });
 
   it("does not render dialog content when open is false", () => {
-    render(
-      <FavouritesProvider>
-        <BillModal bill={buildBill()} open={false} onClose={vi.fn()} />
-      </FavouritesProvider>
-    );
+    renderModal({ open: false });
 
     expect(screen.queryByText("Bill 42/2024")).not.toBeInTheDocument();
   });
@@ -131,7 +135,7 @@ describe("BillModal", () => {
     await user.click(favouriteButton);
 
     expect(
-      screen.getByRole("button", { name: "Remove 42/2024 from favourites" })
+      screen.getByRole("button", { name: "Remove 42/2024 from favourites" }),
     ).toBeInTheDocument();
   });
 });

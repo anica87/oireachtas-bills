@@ -3,8 +3,8 @@ import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchBills } from "@/api/bills";
-import { useBills, useBillTypes } from "./useBills";
-import type { BillRecord, BillsApiResponse } from "@/types";
+import type { BillRecord } from "@/types";
+import { useBills } from "./useBills";
 
 vi.mock("@/api/bills", async () => {
   const actual = await vi.importActual<typeof import("@/api/bills")>("@/api/bills");
@@ -41,165 +41,302 @@ function createWrapper() {
   };
 }
 
+function findCall(limit: number, skip: number) {
+  return mockedFetchBills.mock.calls.find(([args]) => args.limit === limit && args.skip === skip);
+}
+
 describe("useBills", () => {
   beforeEach(() => {
     mockedFetchBills.mockReset();
   });
 
-  it("maps the API response into bills and total", async () => {
-    const response: BillsApiResponse = {
-      head: { counts: { billCount: 2 } },
-      results: [buildRecord({ billNo: "1" }), buildRecord({ billNo: "2" })],
-    };
-    mockedFetchBills.mockResolvedValue(response);
+  describe("default state: no typeFilter, filterTouched not set", () => {
+    it("calls fetchBills exactly once — the all-bills batch fetch stays disabled", async () => {
+      mockedFetchBills.mockResolvedValue({
+        head: { counts: { billCount: 2 } },
+        results: [buildRecord({ billNo: "1" }), buildRecord({ billNo: "2" })],
+      });
 
-    const { result } = renderHook(() => useBills({ page: 0, pageSize: 20 }), {
-      wrapper: createWrapper(),
+      const { result } = renderHook(() => useBills({ page: 0, pageSize: 20 }), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.data).toBeDefined());
+
+      // with filterTouched omitted (falsy) and no typeFilter, useAllBills
+      // must stay disabled — only the paginated query should ever fire
+      expect(mockedFetchBills).toHaveBeenCalledTimes(1);
+      expect(mockedFetchBills).toHaveBeenCalledWith({ limit: 20, skip: 0 });
     });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    it("maps the API response into bills and total", async () => {
+      mockedFetchBills.mockResolvedValue({
+        head: { counts: { billCount: 2 } },
+        results: [buildRecord({ billNo: "1" }), buildRecord({ billNo: "2" })],
+      });
 
-    expect(result.current.data?.bills).toHaveLength(2);
-    expect(result.current.data?.bills[0].billNo).toBe("1");
-    expect(result.current.data?.total).toBe(2);
+      const { result } = renderHook(() => useBills({ page: 0, pageSize: 20 }), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.data).toBeDefined());
+
+      expect(result.current.data?.bills).toHaveLength(2);
+      expect(result.current.data?.bills[0].billNo).toBe("1");
+      expect(result.current.data?.total).toBe(2);
+    });
+
+    it("converts page and pageSize into limit and skip", async () => {
+      mockedFetchBills.mockResolvedValue({
+        head: { counts: { billCount: 0 } },
+        results: [],
+      });
+
+      renderHook(() => useBills({ page: 2, pageSize: 10 }), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(mockedFetchBills).toHaveBeenCalledWith({ limit: 10, skip: 20 }));
+    });
+
+    it("re-fetches when page or pageSize changes", async () => {
+      mockedFetchBills.mockResolvedValue({
+        head: { counts: { billCount: 0 } },
+        results: [],
+      });
+
+      const wrapper = createWrapper();
+      const { rerender } = renderHook(
+        ({ page, pageSize }: { page: number; pageSize: number }) => useBills({ page, pageSize }),
+        { wrapper, initialProps: { page: 0, pageSize: 20 } },
+      );
+
+      await waitFor(() => expect(findCall(20, 0)).toBeDefined());
+
+      rerender({ page: 1, pageSize: 20 });
+
+      await waitFor(() => expect(findCall(20, 20)).toBeDefined());
+    });
+
+    it("exposes the error when the paginated fetch rejects", async () => {
+      mockedFetchBills.mockRejectedValue(new Error("API error: 500"));
+
+      const { result } = renderHook(() => useBills({ page: 0, pageSize: 20 }), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.error).not.toBeNull());
+
+      expect(result.current.error).toBeInstanceOf(Error);
+      expect(result.current.error?.message).toMatch(/500/);
+    });
   });
 
-  it("converts page and pageSize into limit and skip", async () => {
-    mockedFetchBills.mockResolvedValue({
-      head: { counts: { billCount: 0 } },
-      results: [],
+  describe("filterTouched=true, no typeFilter yet", () => {
+    it("enables the all-bills batch fetch (useAllBills(!!filterTouched)) even without typeFilter", async () => {
+      mockedFetchBills.mockResolvedValue({
+        head: { counts: { billCount: 0 } },
+        results: [],
+      });
+
+      renderHook(() => useBills({ page: 0, pageSize: 20, filterTouched: true }), {
+        wrapper: createWrapper(),
+      });
+
+      // both the paginated query (limit 20) and the batch fetch (limit 1000)
+      // should fire, since useAllBills now only checks !!filterTouched
+      await waitFor(() => expect(findCall(1000, 0)).toBeDefined());
+      expect(findCall(20, 0)).toBeDefined();
     });
 
-    renderHook(() => useBills({ page: 2, pageSize: 10 }), {
-      wrapper: createWrapper(),
-    });
+    it("still returns the unfiltered/paginated data as `data` since typeFilter is not set", async () => {
+      mockedFetchBills.mockImplementation(async ({ limit, skip }) => {
+        if (limit === 20 && skip === 0) {
+          return {
+            head: { counts: { billCount: 1 } },
+            results: [buildRecord({ billNo: "1" })],
+          };
+        }
+        return { head: { counts: { billCount: 0 } }, results: [] };
+      });
 
-    await waitFor(() => expect(mockedFetchBills).toHaveBeenCalled());
+      const { result } = renderHook(
+        () => useBills({ page: 0, pageSize: 20, filterTouched: true }),
+        { wrapper: createWrapper() },
+      );
 
-    expect(mockedFetchBills).toHaveBeenCalledWith({
-      limit: 10,
-      skip: 20,
-      bill_type: undefined,
+      await waitFor(() => expect(result.current.data?.total).toBe(1));
+
+      expect(result.current.data?.bills[0].billNo).toBe("1");
     });
   });
 
-  it("passes typeFilter through as bill_type", async () => {
-    mockedFetchBills.mockResolvedValue({
-      head: { counts: { billCount: 0 } },
-      results: [],
+  describe("typeFilter set (client-side filtering active)", () => {
+    it("does not send bill_type to fetchBills — filtering happens client-side via useAllBills", async () => {
+      mockedFetchBills.mockImplementation(async ({ limit, skip }) => {
+        if (limit === 1000 && skip === 0) {
+          return {
+            head: { counts: { billCount: 2 } },
+            results: [
+              buildRecord({ billNo: "1", billType: "Public" }),
+              buildRecord({ billNo: "2", billType: "Private" }),
+            ],
+          };
+        }
+        return { head: { counts: { billCount: 0 } }, results: [] };
+      });
+
+      const { result } = renderHook(
+        () => useBills({ page: 0, pageSize: 20, typeFilter: "Public", filterTouched: true }),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.data?.bills.length).toBeGreaterThan(0));
+
+      for (const [args] of mockedFetchBills.mock.calls) {
+        expect(args).not.toHaveProperty("bill_type");
+      }
+
+      expect(result.current.data?.bills).toHaveLength(1);
+      expect(result.current.data?.bills[0].billType).toBe("Public");
+      expect(result.current.data?.total).toBe(1);
     });
 
-    renderHook(() => useBills({ page: 0, pageSize: 20, typeFilter: "pub" }), {
-      wrapper: createWrapper(),
+    it("disables the paginated query once typeFilter is set", async () => {
+      mockedFetchBills.mockResolvedValue({
+        head: { counts: { billCount: 0 } },
+        results: [],
+      });
+
+      renderHook(
+        () => useBills({ page: 0, pageSize: 20, typeFilter: "Public", filterTouched: true }),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(findCall(1000, 0)).toBeDefined());
+
+      // the paginated (limit: 20) query should never fire while typeFilter is set
+      expect(findCall(20, 0)).toBeUndefined();
     });
 
-    await waitFor(() => expect(mockedFetchBills).toHaveBeenCalled());
+    it("paginates the filtered results client-side using page and pageSize", async () => {
+      const allRecords = Array.from({ length: 5 }, (_, i) =>
+        buildRecord({ billNo: `${i}`, billType: i % 2 === 0 ? "Public" : "Private" }),
+      );
+      mockedFetchBills.mockResolvedValue({
+        head: { counts: { billCount: 5 } },
+        results: allRecords,
+      });
 
-    expect(mockedFetchBills).toHaveBeenCalledWith({
-      limit: 20,
-      skip: 0,
-      bill_type: "pub",
+      const { result } = renderHook(
+        () => useBills({ page: 0, pageSize: 2, typeFilter: "Public", filterTouched: true }),
+        { wrapper: createWrapper() },
+      );
+
+      // 3 "Public" bills total (indices 0, 2, 4), pageSize 2 -> first page has 2
+      await waitFor(() => expect(result.current.data?.total).toBe(3));
+
+      expect(result.current.data?.bills).toHaveLength(2);
+      expect(result.current.data?.bills.every((b) => b.billType === "Public")).toBe(true);
+    });
+
+    it("returns the second page of filtered results when page is incremented", async () => {
+      const allRecords = Array.from({ length: 5 }, (_, i) =>
+        buildRecord({ billNo: `${i}`, billType: i % 2 === 0 ? "Public" : "Private" }),
+      );
+      mockedFetchBills.mockResolvedValue({
+        head: { counts: { billCount: 5 } },
+        results: allRecords,
+      });
+
+      const { result } = renderHook(
+        () => useBills({ page: 1, pageSize: 2, typeFilter: "Public", filterTouched: true }),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.data?.total).toBe(3));
+
+      // 3 Public bills total, pageSize 2 -> page 1 (second page) has the remaining 1
+      expect(result.current.data?.bills).toHaveLength(1);
+    });
+
+    it("returns an empty result, not an error, when no bills match the filter", async () => {
+      mockedFetchBills.mockResolvedValue({
+        head: { counts: { billCount: 1 } },
+        results: [buildRecord({ billNo: "1", billType: "Private" })],
+      });
+
+      const { result } = renderHook(
+        () =>
+          useBills({
+            page: 0,
+            pageSize: 20,
+            typeFilter: "Nonexistent Type",
+            filterTouched: true,
+          }),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(result.current.data?.bills).toEqual([]);
+      expect(result.current.data?.total).toBe(0);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("exposes the error from the batch fetch when it rejects while typeFilter is set", async () => {
+      mockedFetchBills.mockRejectedValue(new Error("API error: 500"));
+
+      const { result } = renderHook(
+        () => useBills({ page: 0, pageSize: 20, typeFilter: "Public", filterTouched: true }),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.error).not.toBeNull());
+
+      expect(result.current.error).toBeInstanceOf(Error);
     });
   });
 
-  it("sends bill_type as undefined when typeFilter is an empty string", async () => {
-    mockedFetchBills.mockResolvedValue({
-      head: { counts: { billCount: 0 } },
-      results: [],
+  describe("falsy typeFilter (empty string)", () => {
+    it("treats an empty-string typeFilter as unfiltered (falls back to the paginated path)", async () => {
+      mockedFetchBills.mockImplementation(async ({ limit, skip }) => {
+        if (limit === 20 && skip === 0) {
+          return {
+            head: { counts: { billCount: 1 } },
+            results: [buildRecord({ billNo: "1" })],
+          };
+        }
+        return { head: { counts: { billCount: 0 } }, results: [] };
+      });
+
+      const { result } = renderHook(() => useBills({ page: 0, pageSize: 20, typeFilter: "" }), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.data).toBeDefined());
+
+      expect(result.current.data?.bills).toHaveLength(1);
+      expect(result.current.data?.total).toBe(1);
     });
-
-    renderHook(() => useBills({ page: 0, pageSize: 20, typeFilter: "" }), {
-      wrapper: createWrapper(),
-    });
-
-    await waitFor(() => expect(mockedFetchBills).toHaveBeenCalled());
-
-    expect(mockedFetchBills).toHaveBeenCalledWith(
-      expect.objectContaining({ bill_type: undefined })
-    );
   });
 
-  it("exposes the error when the fetch rejects", async () => {
-    mockedFetchBills.mockRejectedValue(new Error("API error: 500 Internal Server Error"));
+  describe("filterTouched omitted entirely vs explicitly false", () => {
+    it("behaves identically whether filterTouched is omitted or passed as false", async () => {
+      mockedFetchBills.mockResolvedValue({
+        head: { counts: { billCount: 0 } },
+        results: [],
+      });
 
-    const { result } = renderHook(() => useBills({ page: 0, pageSize: 20 }), {
-      wrapper: createWrapper(),
+      renderHook(() => useBills({ page: 0, pageSize: 20, filterTouched: false }), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(findCall(20, 0)).toBeDefined());
+
+      // the batch fetch (limit 1000) must not fire when filterTouched is
+      // explicitly false, same as when it's omitted
+      expect(findCall(1000, 0)).toBeUndefined();
     });
-
-    await waitFor(() => expect(result.current.isError).toBe(true));
-
-    expect(result.current.error?.message).toBe("API error: 500 Internal Server Error");
-  });
-
-  it("uses a distinct query key per page/pageSize/typeFilter combination", async () => {
-    mockedFetchBills.mockResolvedValue({
-      head: { counts: { billCount: 0 } },
-      results: [],
-    });
-
-    const wrapper = createWrapper();
-    const { rerender, result } = renderHook(
-      ({ page, pageSize, typeFilter }: { page: number; pageSize: number; typeFilter?: string }) =>
-        useBills({ page, pageSize, typeFilter }),
-      { wrapper, initialProps: { page: 0, pageSize: 20, typeFilter: undefined } }
-    );
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockedFetchBills).toHaveBeenCalledTimes(1);
-
-    rerender({ page: 1, pageSize: 20, typeFilter: undefined });
-
-    await waitFor(() => expect(mockedFetchBills).toHaveBeenCalledTimes(2));
-  });
-});
-
-describe("useBillTypes", () => {
-  beforeEach(() => {
-    mockedFetchBills.mockReset();
-  });
-
-  it("returns the distinct, non-empty bill types from the first page of results", async () => {
-    mockedFetchBills.mockResolvedValue({
-      head: { counts: { billCount: 3 } },
-      results: [
-        buildRecord({ billType: "Public" }),
-        buildRecord({ billType: "Private" }),
-        buildRecord({ billType: "Public" }),
-      ],
-    });
-
-    const { result } = renderHook(() => useBillTypes(), { wrapper: createWrapper() });
-
-    await waitFor(() => expect(result.current).toEqual(["Public", "Private"]));
-  });
-
-  it("filters out empty bill types", async () => {
-    mockedFetchBills.mockResolvedValue({
-      head: { counts: { billCount: 2 } },
-      results: [buildRecord({ billType: "" }), buildRecord({ billType: "Public" })],
-    });
-
-    const { result } = renderHook(() => useBillTypes(), { wrapper: createWrapper() });
-
-    await waitFor(() => expect(result.current).toEqual(["Public"]));
-  });
-
-  it("returns an empty array before the query resolves", () => {
-    mockedFetchBills.mockReturnValue(new Promise(() => {})); // never resolves
-
-    const { result } = renderHook(() => useBillTypes(), { wrapper: createWrapper() });
-
-    expect(result.current).toEqual([]);
-  });
-
-  it("requests a large page size so it captures all known types", async () => {
-    mockedFetchBills.mockResolvedValue({
-      head: { counts: { billCount: 0 } },
-      results: [],
-    });
-
-    renderHook(() => useBillTypes(), { wrapper: createWrapper() });
-
-    await waitFor(() => expect(mockedFetchBills).toHaveBeenCalledWith({ limit: 1000, skip: 0 }));
   });
 });

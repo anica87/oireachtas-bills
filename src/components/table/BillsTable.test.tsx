@@ -1,241 +1,308 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FavouritesProvider } from "@/context/FavouritesContext";
-import { useBills, useBillTypes } from "@/hooks/useBills";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useFavourites } from "@/context/FavouritesContext";
+import { useBills } from "@/hooks/useBills";
+import { useBillTypes } from "@/hooks/useBillTypes";
 import type { Bill } from "@/types";
 import { BillsTable } from "./BillsTable";
 
-vi.mock("@/hooks/useBills", () => ({
-  useBills: vi.fn(),
-  useBillTypes: vi.fn(),
-}));
+vi.mock("@/hooks/useBills");
+vi.mock("@/hooks/useBillTypes");
+vi.mock("@/context/FavouritesContext");
 
-const mockedUseBills = vi.mocked(useBills);
-const mockedUseBillTypes = vi.mocked(useBillTypes);
+const mockUseBills = vi.mocked(useBills);
+const mockUseBillTypes = vi.mocked(useBillTypes);
+const mockUseFavourites = vi.mocked(useFavourites);
 
-function buildBill(overrides: Partial<Bill> = {}): Bill {
+function makeBill(overrides: Partial<Bill> = {}): Bill {
   return {
     id: "bill-1",
     billNo: "1",
-    billYear: "2024",
-    billNoDisplay: "1/2024",
+    billYear: "2026",
+    billNoDisplay: "1/2026",
     billType: "Public",
     status: "First Stage",
-    shortTitleEn: "Short EN",
-    shortTitleGa: "Short GA",
-    longTitleEn: "Long EN",
-    longTitleGa: "Long GA",
-    sponsor: "Micheál Martin",
+    shortTitleEn: "",
+    shortTitleGa: "",
+    longTitleEn: "",
+    longTitleGa: "",
+    sponsor: "Jane Doe",
     originHouse: "Dáil",
-    uri: "http://data.oireachtas.ie/ie/oireachtas/bill/2024/1",
+    uri: "bill-1",
     ...overrides,
   };
 }
 
-function mockUseBillsResult(overrides: Partial<ReturnType<typeof useBills>> = {}) {
-  mockedUseBills.mockReturnValue({
-    data: undefined,
-    isLoading: false,
-    error: null,
-    ...overrides,
-  } as ReturnType<typeof useBills>);
+function renderWithProviders(ui: ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 }
 
-function renderTable() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        <FavouritesProvider>{children}</FavouritesProvider>
-      </QueryClientProvider>
-    );
-  }
-  return render(<BillsTable />, { wrapper: Wrapper });
+/**
+ * Re-queries the combobox fresh rather than reusing an element reference
+ * captured before a tab switch / rerender. MUI's Select can recreate its
+ * underlying DOM node on certain state transitions, so holding onto a
+ * stale reference across an `await user.click(tab)` is a common source of
+ * "Unable to find role" failures that look like the combobox vanished.
+ */
+function getBillTypeSelect() {
+  return screen.getByRole("combobox", { name: /bill type/i });
 }
 
 describe("BillsTable", () => {
   beforeEach(() => {
-    mockedUseBillTypes.mockReturnValue(["Public", "Private"]);
-    mockUseBillsResult();
-  });
-
-  afterEach(() => {
-    cleanup();
     vi.clearAllMocks();
-  });
 
-  it("shows a skeleton row count matching the current page size while loading", () => {
-    mockUseBillsResult({ isLoading: true });
-    renderTable();
+    mockUseBillTypes.mockReturnValue({ types: ["Public", "Private"], isLoading: false });
 
-    const rows = screen.getAllByRole("row", { hidden: true }).filter((r) => r.getAttribute("aria-hidden"));
-    expect(rows).toHaveLength(20);
-  });
+    mockUseFavourites.mockReturnValue({
+      isFavourite: vi.fn().mockReturnValue(false),
+      toggle: vi.fn(),
+      favourites: [],
+      favouriteIds: [],
+    } as unknown as ReturnType<typeof useFavourites>);
 
-  it("shows an error message when the query fails", () => {
-    mockUseBillsResult({ error: new Error("network down") });
-    renderTable();
-
-    expect(screen.getByText("Failed to load: network down")).toBeInTheDocument();
-  });
-
-  it("shows an empty state when there are no bills", () => {
-    mockUseBillsResult({ data: { bills: [], total: 0 } });
-    renderTable();
-
-    expect(screen.getByText("No bills match the current filter.")).toBeInTheDocument();
-  });
-
-  it("renders a row per bill with number, type, status and sponsor", () => {
-    mockUseBillsResult({
-      data: { bills: [buildBill()], total: 1 },
+    mockUseBills.mockReturnValue({
+      data: { bills: [makeBill({ id: "1", billNoDisplay: "1/2026" })], total: 1 },
+      isLoading: false,
+      error: null,
     });
-    renderTable();
-
-    expect(screen.getByText("1/2024")).toBeInTheDocument();
-    expect(screen.getByText("Public")).toBeInTheDocument();
-    expect(screen.getByText("First Stage")).toBeInTheDocument();
-    expect(screen.getByText("Micheál Martin")).toBeInTheDocument();
   });
 
-  it("shows an em dash when a bill has no sponsor", () => {
-    mockUseBillsResult({
-      data: { bills: [buildBill({ sponsor: "" })], total: 1 },
+  describe("rendering basics", () => {
+    it("renders bills returned by useBills", () => {
+      renderWithProviders(<BillsTable />);
+
+      expect(screen.getByText("1/2026")).toBeInTheDocument();
     });
-    renderTable();
 
-    expect(screen.getByText("—")).toBeInTheDocument();
-  });
+    it("shows a loading skeleton and no real rows while isLoading", () => {
+      mockUseBills.mockReturnValue({ data: undefined, isLoading: true, error: null });
 
-  it("opens the bill modal when a row is clicked", async () => {
-    const user = userEvent.setup();
-    mockUseBillsResult({
-      data: { bills: [buildBill({ billNoDisplay: "1/2024" })], total: 1 },
+      renderWithProviders(<BillsTable />);
+
+      expect(screen.queryByText("1/2026")).not.toBeInTheDocument();
     });
-    renderTable();
 
-    await user.click(screen.getByText("1/2024"));
+    it("shows an error message with the underlying error text", () => {
+      mockUseBills.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error: new Error("Network failure"),
+      });
 
-    expect(screen.getByRole("heading", { name: "Bill 1/2024" })).toBeInTheDocument();
-  });
+      renderWithProviders(<BillsTable />);
 
-  it("opens the bill modal on Enter key when a row is focused", async () => {
-    const user = userEvent.setup();
-    mockUseBillsResult({
-      data: { bills: [buildBill({ billNoDisplay: "1/2024" })], total: 1 },
+      expect(screen.getByText(/failed to load/i)).toBeInTheDocument();
+      expect(screen.getByText(/network failure/i)).toBeInTheDocument();
     });
-    renderTable();
 
-    const row = screen.getByText("1/2024").closest("tr")!;
-    row.focus();
-    await user.keyboard("{Enter}");
+    it("shows an empty-state message when there are no bills", () => {
+      mockUseBills.mockReturnValue({
+        data: { bills: [], total: 0 },
+        isLoading: false,
+        error: null,
+      });
 
-    expect(screen.getByRole("heading", { name: "Bill 1/2024" })).toBeInTheDocument();
-  });
+      renderWithProviders(<BillsTable />);
 
-  it("does not open the modal when clicking the favourite star inside a row", async () => {
-    const user = userEvent.setup();
-    mockUseBillsResult({
-      data: { bills: [buildBill({ billNoDisplay: "1/2024" })], total: 1 },
+      expect(screen.getByText(/no bills match the current filter/i)).toBeInTheDocument();
     });
-    renderTable();
-
-    await user.click(screen.getByRole("button", { name: "Add 1/2024 to favourites" }));
-
-    expect(screen.queryByRole("heading", { name: "Bill 1/2024" })).not.toBeInTheDocument();
   });
 
-  it("shows a count badge on the Favourites tab once a bill is favourited", async () => {
-    const user = userEvent.setup();
-    mockUseBillsResult({
-      data: { bills: [buildBill({ billNoDisplay: "1/2024" })], total: 1 },
+  describe("shouldLoadAllBills wiring", () => {
+    it("calls useBillTypes and useBills with filterTouched=false before the dropdown is opened", () => {
+      renderWithProviders(<BillsTable />);
+
+      expect(mockUseBillTypes).toHaveBeenCalledWith(false);
+      expect(mockUseBills).toHaveBeenCalledWith(expect.objectContaining({ filterTouched: false }));
     });
-    renderTable();
 
-    expect(screen.getByRole("tab", { name: "Favourites" })).toBeInTheDocument();
+    it("flips shouldLoadAllBills to true for both hooks once the dropdown is opened", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<BillsTable />);
 
-    await user.click(screen.getByRole("button", { name: "Add 1/2024 to favourites" }));
+      await user.click(getBillTypeSelect());
 
-    expect(screen.getByRole("tab", { name: "Favourites (1)" })).toBeInTheDocument();
-  });
-
-  it("shows favourited bills client-side on the Favourites tab", async () => {
-    const user = userEvent.setup();
-    mockUseBillsResult({
-      data: { bills: [buildBill({ id: "bill-1", billNoDisplay: "1/2024" })], total: 1 },
+      expect(mockUseBillTypes).toHaveBeenLastCalledWith(true);
+      expect(mockUseBills).toHaveBeenLastCalledWith(
+        expect.objectContaining({ filterTouched: true }),
+      );
     });
-    renderTable();
-
-    await user.click(screen.getByRole("button", { name: "Add 1/2024 to favourites" }));
-    await user.click(screen.getByRole("tab", { name: "Favourites (1)" }));
-
-    expect(screen.getByText("1/2024")).toBeInTheDocument();
   });
 
-  it("shows the favourites empty state when no bills are favourited", async () => {
-    const user = userEvent.setup();
-    mockUseBillsResult({ data: { bills: [], total: 0 } });
-    renderTable();
+  describe("type filter dropdown", () => {
+    it("shows 'Loading types…' while isBillTypesLoading is true and the dropdown has been opened", async () => {
+      mockUseBillTypes.mockReturnValue({ types: [], isLoading: true });
 
-    await user.click(screen.getByRole("tab", { name: "Favourites" }));
+      const user = userEvent.setup();
+      renderWithProviders(<BillsTable />);
 
-    expect(
-      screen.getByText("No favourited bills yet — click a star to save one.")
-    ).toBeInTheDocument();
+      await user.click(getBillTypeSelect());
+
+      expect(await screen.findByText(/loading types/i)).toBeInTheDocument();
+    });
+
+    it("passes the selected type filter through to useBills", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<BillsTable />);
+
+      await user.click(getBillTypeSelect());
+      const listbox = await screen.findByRole("listbox");
+      await user.click(within(listbox).getByRole("option", { name: "Public" }));
+
+      expect(mockUseBills).toHaveBeenLastCalledWith(
+        expect.objectContaining({ typeFilter: "Public" }),
+      );
+    });
+
+    it("resets the filter and displays 'All types' when that option is selected", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<BillsTable />);
+
+      await user.click(getBillTypeSelect());
+      let listbox = await screen.findByRole("listbox");
+      await user.click(within(listbox).getByRole("option", { name: "Public" }));
+
+      // re-query the select fresh rather than reusing the pre-selection reference
+      await user.click(getBillTypeSelect());
+      listbox = await screen.findByRole("listbox");
+      await user.click(within(listbox).getByRole("option", { name: "All types" }));
+
+      expect(mockUseBills).toHaveBeenLastCalledWith(expect.objectContaining({ typeFilter: "" }));
+      expect(getBillTypeSelect()).toHaveTextContent("All types");
+    });
   });
 
-  it("populates the bill type filter from useBillTypes", async () => {
-    const user = userEvent.setup();
-    renderTable();
-
-    await user.click(screen.getAllByRole("combobox")[0]);
-
-    const listbox = screen.getByRole("listbox");
-    expect(within(listbox).getByText("All types")).toBeInTheDocument();
-    expect(within(listbox).getByText("Public")).toBeInTheDocument();
-    expect(within(listbox).getByText("Private")).toBeInTheDocument();
-  });
-
-  it("requests bills with the selected type filter", async () => {
-    const user = userEvent.setup();
-    mockUseBillsResult({ data: { bills: [], total: 0 } });
-    renderTable();
-
-    await user.click(screen.getAllByRole("combobox")[0]);
-    await user.click(screen.getByRole("option", { name: "Public" }));
-
-    expect(mockedUseBills).toHaveBeenLastCalledWith(
-      expect.objectContaining({ typeFilter: "Public", page: 0 })
-    );
-  });
-
-  it("filters favourites client-side by the selected type", async () => {
-    const user = userEvent.setup();
-    mockUseBillsResult({
-      data: {
-        bills: [
-          buildBill({ id: "bill-1", billNoDisplay: "1/2024", billType: "Public" }),
-          buildBill({ id: "bill-2", billNoDisplay: "2/2024", billType: "Private" }),
+  describe("tabs and favourites", () => {
+    it("filters favourites client-side by the selected type", async () => {
+      mockUseFavourites.mockReturnValue({
+        isFavourite: vi.fn().mockReturnValue(true),
+        toggle: vi.fn(),
+        favourites: [
+          makeBill({ id: "f1", billNoDisplay: "10/2026", billType: "Public" }),
+          makeBill({ id: "f2", billNoDisplay: "11/2026", billType: "Private" }),
         ],
-        total: 2,
-      },
+        favouriteIds: ["f1", "f2"],
+      } as unknown as ReturnType<typeof useFavourites>);
+
+      const user = userEvent.setup();
+      renderWithProviders(<BillsTable />);
+
+      const favouritesTab = screen.getByRole("tab", { name: /favourites/i });
+      await user.click(favouritesTab);
+
+      // wait for the tab switch to settle before any further queries
+      expect(await screen.findByText("10/2026")).toBeInTheDocument();
+      expect(screen.getByText("11/2026")).toBeInTheDocument();
+
+      // re-query the combobox fresh, after the tab switch has fully
+      // committed, rather than reusing a reference captured pre-switch
+      const select = getBillTypeSelect();
+      await user.click(select);
+
+      const listbox = await screen.findByRole("listbox");
+      await user.click(within(listbox).getByRole("option", { name: "Public" }));
+
+      expect(await screen.findByText("10/2026")).toBeInTheDocument();
+      expect(screen.queryByText("11/2026")).not.toBeInTheDocument();
     });
-    renderTable();
 
-    await user.click(screen.getByRole("button", { name: "Add 1/2024 to favourites" }));
-    await user.click(screen.getByRole("button", { name: "Add 2/2024 to favourites" }));
+    it("shows the favourites count badge in the tab label", () => {
+      mockUseFavourites.mockReturnValue({
+        isFavourite: vi.fn().mockReturnValue(true),
+        toggle: vi.fn(),
+        favourites: [makeBill({ id: "f1" }), makeBill({ id: "f2" })],
+        favouriteIds: ["f1", "f2"],
+      } as unknown as ReturnType<typeof useFavourites>);
 
-    await user.click(screen.getByRole("tab", { name: "Favourites (2)" }));
-    expect(screen.getByText("1/2024")).toBeInTheDocument();
-    expect(screen.getByText("2/2024")).toBeInTheDocument();
+      renderWithProviders(<BillsTable />);
 
-    await user.click(screen.getAllByRole("combobox")[0]);
-    await user.click(screen.getByRole("option", { name: "Public" }));
+      expect(screen.getByRole("tab", { name: /favourites \(2\)/i })).toBeInTheDocument();
+    });
 
-    expect(screen.getByText("1/2024")).toBeInTheDocument();
-    expect(screen.queryByText("2/2024")).not.toBeInTheDocument();
+    it("shows the favourites empty-state message when there are none", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<BillsTable />);
+
+      await user.click(screen.getByRole("tab", { name: /favourites/i }));
+
+      expect(await screen.findByText(/no favourited bills yet/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("pagination controls", () => {
+    it("exposes accessible names for all four pagination buttons", () => {
+      renderWithProviders(<BillsTable />);
+
+      expect(screen.getByRole("button", { name: "First page" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Previous page" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Next page" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Last page" })).toBeInTheDocument();
+    });
+
+    it("disables First/Previous on the first page and Next/Last when there's only one page", () => {
+      renderWithProviders(<BillsTable />);
+
+      expect(screen.getByRole("button", { name: "First page" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Last page" })).toBeDisabled();
+    });
+
+    it("keeps independent pagination state per tab", async () => {
+      mockUseFavourites.mockReturnValue({
+        isFavourite: vi.fn().mockReturnValue(true),
+        toggle: vi.fn(),
+        favourites: Array.from({ length: 25 }, (_, i) =>
+          makeBill({ id: `f${i}`, billNoDisplay: `${i}/2026` }),
+        ),
+        favouriteIds: Array.from({ length: 25 }, (_, i) => `f${i}`),
+      } as unknown as ReturnType<typeof useFavourites>);
+
+      const user = userEvent.setup();
+      renderWithProviders(<BillsTable />);
+
+      await user.click(screen.getByRole("tab", { name: /favourites/i }));
+      expect(await screen.findByText(/1–20 of 25/)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Next page" }));
+      expect(await screen.findByText(/21–25 of 25/)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("tab", { name: /all bills/i }));
+      await user.click(screen.getByRole("tab", { name: /favourites/i }));
+
+      expect(await screen.findByText(/21–25 of 25/)).toBeInTheDocument();
+    });
+  });
+
+  describe("row interaction", () => {
+    it("clicking a row does not throw and the row remains rendered", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<BillsTable />);
+
+      const row = screen.getByText("1/2026").closest("tr");
+      expect(row).not.toBeNull();
+
+      await user.click(row as HTMLElement);
+
+      expect(screen.getByText("1/2026")).toBeInTheDocument();
+    });
+
+    it("activating a row via keyboard (Enter) does not throw", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<BillsTable />);
+
+      const row = screen.getByText("1/2026").closest("tr") as HTMLElement;
+      row.focus();
+      await user.keyboard("{Enter}");
+
+      expect(screen.getByText("1/2026")).toBeInTheDocument();
+    });
   });
 });

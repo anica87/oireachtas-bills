@@ -24,20 +24,34 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { FavouriteButton } from "@/components/favorite/FavouriteButton";
 import { BillModal } from "@/components/modal/BillModal";
 import { useFavourites } from "@/context/FavouritesContext";
 import { useBills } from "@/hooks/useBills";
 import { useBillTypes } from "@/hooks/useBillTypes";
+import {
+  PAGE_SIZE_OPTIONS,
+  type PageSize,
+  type PaginationState,
+  useTabPagination,
+} from "@/hooks/useTabPagination";
 import type { Bill } from "@/types";
-
-const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
-type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
 
 const TABLE_COLUMNS = 5;
 
 type TabValue = "all" | "favourites";
+
+// Named constants for the two tab values, used everywhere instead of bare
+// string literals — avoids repeated, easy-to-typo "favourites"/"all"
+// strings scattered through comparisons, JSX, and state initializers.
+// `satisfies Record<string, TabValue>` keeps each value checked against
+// TabValue without widening them to plain `string` the way a TS `enum`
+// reverse-mapping or a loosely-typed object would.
+const TAB = {
+  ALL: "all",
+  FAVOURITES: "favourites",
+} as const satisfies Record<string, TabValue>;
 
 function getStatusColor(status: string): "default" | "success" | "error" | "warning" | "primary" {
   const s = status.toLowerCase();
@@ -48,9 +62,22 @@ function getStatusColor(status: string): "default" | "success" | "error" | "warn
   return "default";
 }
 
-interface PaginationState {
-  page: number;
-  pageSize: PageSize;
+/**
+ * Favourites live entirely in client state (FavouritesContext), so unlike
+ * the "All Bills" tab — which delegates filtering/pagination to useBills —
+ * favourites are filtered and paginated here, in memory.
+ */
+function getFavouritesPage(
+  favourites: Bill[],
+  typeFilter: string,
+  pagination: PaginationState,
+): { rows: Bill[]; total: number } {
+  const filtered = typeFilter ? favourites.filter((b) => b.billType === typeFilter) : favourites;
+  const start = pagination.page * pagination.pageSize;
+  return {
+    rows: filtered.slice(start, start + pagination.pageSize),
+    total: filtered.length,
+  };
 }
 
 interface TablePaginationControlsProps {
@@ -61,7 +88,7 @@ interface TablePaginationControlsProps {
   onPageSizeChange: (size: PageSize) => void;
 }
 
-function TablePaginationControls({
+const TablePaginationControls = memo(function TablePaginationControls({
   page,
   pageSize,
   total,
@@ -75,8 +102,8 @@ function TablePaginationControls({
   return (
     <Stack
       direction="row"
-      alignitems="center"
-      justifycontent="flex-end"
+      alignItems="center"
+      justifyContent="flex-end"
       spacing={1}
       sx={{ px: 2, py: 1 }}
     >
@@ -106,14 +133,24 @@ function TablePaginationControls({
 
       <Tooltip title="First page">
         <span>
-          <IconButton size="small" onClick={() => onPageChange(0)} disabled={page === 0}>
+          <IconButton
+            size="small"
+            aria-label="First page"
+            onClick={() => onPageChange(0)}
+            disabled={page === 0}
+          >
             <FirstPageIcon fontSize="small" />
           </IconButton>
         </span>
       </Tooltip>
       <Tooltip title="Previous page">
         <span>
-          <IconButton size="small" onClick={() => onPageChange(page - 1)} disabled={page === 0}>
+          <IconButton
+            size="small"
+            aria-label="Previous page"
+            onClick={() => onPageChange(page - 1)}
+            disabled={page === 0}
+          >
             <NavigateBeforeIcon fontSize="small" />
           </IconButton>
         </span>
@@ -122,6 +159,7 @@ function TablePaginationControls({
         <span>
           <IconButton
             size="small"
+            aria-label="Next page"
             onClick={() => onPageChange(page + 1)}
             disabled={page >= lastPage}
           >
@@ -131,94 +169,118 @@ function TablePaginationControls({
       </Tooltip>
       <Tooltip title="Last page">
         <span>
-          <IconButton size="small" onClick={() => onPageChange(lastPage)} disabled={page >= lastPage}>
+          <IconButton
+            size="small"
+            aria-label="Last page"
+            onClick={() => onPageChange(lastPage)}
+            disabled={page >= lastPage}
+          >
             <LastPageIcon fontSize="small" />
           </IconButton>
         </span>
       </Tooltip>
     </Stack>
   );
-}
+});
 
 export function BillsTable() {
   const { isFavourite, toggle, favourites, favouriteIds } = useFavourites();
-  const billTypes = useBillTypes();
 
-  const [tab, setTab] = useState<TabValue>("all");
+  const [tab, setTab] = useState<TabValue>(TAB.ALL);
   const [typeFilter, setTypeFilter] = useState("");
+  const [filterTouched, setFilterTouched] = useState(false);
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
 
-  // each tab keeps its own page/pageSize so switching tabs doesn't reset the other
-  const [allPagination, setAllPagination] = useState<PaginationState>({ page: 0, pageSize: 20 });
-  const [favPagination, setFavPagination] = useState<PaginationState>({ page: 0, pageSize: 20 });
+  const { pagination, setPagination, resetAllTabsToFirstPage } = useTabPagination<TabValue>(tab);
 
-  const pagination = tab === "all" ? allPagination : favPagination;
-  const setPagination = tab === "all" ? setAllPagination : setFavPagination;
+  // single source of truth for "should the full ~6000-bill dataset be
+  // loading" — combines both ways that can become true (dropdown opened,
+  // or a type already selected) in exactly one place, then passed as-is to
+  // both useBillTypes (populates dropdown options) and useBills (drives
+  // client-side filtering), instead of each hook re-deriving it separately.
+  const shouldLoadAllBills = filterTouched || !!typeFilter;
+
+  const { types, isLoading: isBillTypesLoading } = useBillTypes(shouldLoadAllBills);
 
   const { data, isLoading, error } = useBills({
     page: pagination.page,
     pageSize: pagination.pageSize,
     typeFilter,
+    filterTouched: shouldLoadAllBills,
   });
 
   const bills = data?.bills ?? [];
   const total = data?.total ?? 0;
 
-  // favourites live entirely in context, so filter/paginate them client-side
-  const filteredFavourites = typeFilter
-    ? favourites.filter((b) => b.billType === typeFilter)
-    : favourites;
-
-  const favouritesPage = filteredFavourites.slice(
-    favPagination.page * favPagination.pageSize,
-    (favPagination.page + 1) * favPagination.pageSize
+  const favouritesPage = useMemo(
+    () => getFavouritesPage(favourites, typeFilter, pagination),
+    [favourites, typeFilter, pagination],
   );
 
-  const rows = tab === "favourites" ? favouritesPage : bills;
-  const rowTotal = tab === "favourites" ? filteredFavourites.length : total;
+  const rows = tab === TAB.FAVOURITES ? favouritesPage.rows : bills;
+  const rowTotal = tab === TAB.FAVOURITES ? favouritesPage.total : total;
 
   function handleTabChange(_: React.SyntheticEvent, value: TabValue) {
     setTab(value);
   }
 
-  function handlePageChange(page: number) {
-    setPagination((prev) => ({ ...prev, page }));
-  }
+  const handlePageChange = useCallback(
+    (page: number) => {
+      setPagination((prev) => ({ ...prev, page }));
+    },
+    [setPagination],
+  );
 
-  function handlePageSizeChange(pageSize: PageSize) {
-    setPagination({ page: 0, pageSize });
-  }
+  const handlePageSizeChange = useCallback(
+    (pageSize: PageSize) => {
+      setPagination({ page: 0, pageSize });
+    },
+    [setPagination],
+  );
 
   function handleTypeFilterChange(value: string) {
     setTypeFilter(value);
-    setAllPagination((p) => ({ ...p, page: 0 }));
-    setFavPagination((p) => ({ ...p, page: 0 }));
+    resetAllTabsToFirstPage();
   }
 
   return (
     <Paper elevation={2}>
-      <Tabs value={tab} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: "divider", px: 2 }}>
-        <Tab label="All Bills" value="all" />
+      <Tabs
+        value={tab}
+        onChange={handleTabChange}
+        sx={{ borderBottom: 1, borderColor: "divider", px: 2 }}
+      >
+        <Tab label="All Bills" value={TAB.ALL} />
         <Tab
           label={`Favourites${favouriteIds.length > 0 ? ` (${favouriteIds.length})` : ""}`}
-          value="favourites"
+          value={TAB.FAVOURITES}
         />
       </Tabs>
 
       <Box sx={{ px: 2, pt: 2 }}>
         <FormControl size="small" sx={{ minWidth: 180 }}>
-          <InputLabel>Bill type</InputLabel>
+          <InputLabel shrink id="bill-type-label">
+            Bill type
+          </InputLabel>
           <Select
+            labelId="bill-type-label"
             value={typeFilter}
             label="Bill type"
+            displayEmpty
+            renderValue={(selected) => (selected === "" ? "All types" : selected)}
+            onOpen={() => setFilterTouched(true)}
             onChange={(e) => handleTypeFilterChange(e.target.value)}
           >
             <MenuItem value="">All types</MenuItem>
-            {billTypes.map((type) => (
-              <MenuItem key={type} value={type}>
-                {type}
-              </MenuItem>
-            ))}
+            {filterTouched && isBillTypesLoading ? (
+              <MenuItem disabled>Loading types…</MenuItem>
+            ) : (
+              types.map((type) => (
+                <MenuItem key={type} value={type}>
+                  {type}
+                </MenuItem>
+              ))
+            )}
           </Select>
         </FormControl>
       </Box>
@@ -258,7 +320,7 @@ export function BillsTable() {
               <TableRow>
                 <TableCell colSpan={TABLE_COLUMNS} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary" variant="body2">
-                    {tab === "favourites"
+                    {tab === TAB.FAVOURITES
                       ? "No favourited bills yet — click a star to save one."
                       : "No bills match the current filter."}
                   </Typography>

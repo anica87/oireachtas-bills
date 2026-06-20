@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchBills, mapBillRecord } from "./bills";
 import type { BillRecord, BillsApiResponse } from "@/types";
+import { fetchBills, mapBillRecord } from "./bills";
 
 describe("fetchBills", () => {
   beforeEach(() => {
@@ -132,7 +132,7 @@ describe("mapBillRecord", () => {
         shortTitleGa: "Short GA",
         longTitleEn: undefined,
         longTitleGa: undefined,
-      })
+      }),
     );
 
     expect(result.longTitleEn).toBe("Short EN");
@@ -144,7 +144,7 @@ describe("mapBillRecord", () => {
       buildRecord({
         shortTitleEn: "Short EN",
         longTitleEn: "Long EN",
-      })
+      }),
     );
 
     expect(result.longTitleEn).toBe("Long EN");
@@ -161,7 +161,7 @@ describe("mapBillRecord", () => {
             },
           },
         ],
-      })
+      }),
     );
 
     expect(result.sponsor).toBe("Micheál Martin");
@@ -177,7 +177,7 @@ describe("mapBillRecord", () => {
             },
           },
         ],
-      })
+      }),
     );
 
     expect(result.sponsor).toBe("Government");
@@ -190,7 +190,7 @@ describe("mapBillRecord", () => {
 
   it("reads originHouse.showAs when present, else empty string", () => {
     const withHouse = mapBillRecord(
-      buildRecord({ originHouse: { showAs: "Dáil", uri: "uri-house" } })
+      buildRecord({ originHouse: { showAs: "Dáil", uri: "uri-house" } }),
     );
     expect(withHouse.originHouse).toBe("Dáil");
 
@@ -200,7 +200,7 @@ describe("mapBillRecord", () => {
 
   it("carries the bill uri through to both id and uri fields", () => {
     const result = mapBillRecord(
-      buildRecord({ uri: "http://data.oireachtas.ie/ie/oireachtas/bill/2024/99" })
+      buildRecord({ uri: "http://data.oireachtas.ie/ie/oireachtas/bill/2024/99" }),
     );
     expect(result.id).toBe(result.uri);
     expect(result.uri).toBe("http://data.oireachtas.ie/ie/oireachtas/bill/2024/99");
