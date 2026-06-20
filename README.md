@@ -1,5 +1,7 @@
 # Oireachtas Bills Explorer
 
+[![CI](https://github.com/anica87/oireachtas-bills/actions/workflows/ci.yml/badge.svg)](https://github.com/anica87/oireachtas-bills/actions/workflows/ci.yml)
+
 A React + TypeScript app for browsing Irish legislative bills, with type filtering, pagination, and the ability to favourite bills for quick reference.
 
 ## Features
@@ -19,16 +21,27 @@ A React + TypeScript app for browsing Irish legislative bills, with type filteri
 
 ## Getting started
 
+Requires Node 22+ (matches the version pinned in CI).
+
 ```bash
 npm install
 npm run dev
 ```
 
-Run tests:
+Other scripts:
 
 ```bash
-npm run test
+npm run build         # type-check (tsc -b) + production build
+npm run test           # run the test suite once
+npm run test:watch     # run tests in watch mode
+npm run test:coverage  # run tests with coverage report
+npm run lint            # Biome + oxlint, no fixes applied
+npm run lint:fix        # Biome, applying safe fixes
+npm run format           # Biome, format-only
+npm run type-check       # tsc -b across all project references
 ```
+
+CI (`.github/workflows/ci.yml`) runs `lint`, `type-check`, `test`, and `build` on every push and pull request against `main`.
 
 ## Architecture overview
 
@@ -78,22 +91,28 @@ Clicking the star icon on any bill row (or in the bill detail modal) favourites 
 ```
 src/
   api/
-    bills.ts            # fetchBills, mapBillRecord
-    favourites.ts        # mocked favourite/un-favourite requests
+    bills.ts             # fetchBills, mapBillRecord
+    favourites.ts         # mocked favourite/un-favourite requests
   hooks/
     useBills.ts
     useAllBills.ts
     useBillTypes.ts
-    useTabPagination.ts  # per-tab page/pageSize state
+    useTabPagination.ts   # per-tab page/pageSize state
   context/
     FavouritesContext.tsx
   components/
+    layout/
+      AppLayout.tsx       # app bar + page shell
     table/
-      BillsTable.tsx
+      BillsTable.tsx       # self-contained: owns tabs, filter, pagination, and the row-click modal
     modal/
       BillModal.tsx
     favorite/
       FavouriteButton.tsx
+  pages/
+    BillsPage.tsx          # thin page wrapper around BillsTable
+  test/
+    setup.ts                # jest-dom matchers + jsdom polyfills (ResizeObserver etc.)
 ```
 
 ## Testing
@@ -116,3 +135,7 @@ npx vitest run src/context/FavouritesContext.test.tsx
 - **Client-side filtering caps out eventually.** This approach works well at the current scale (~6,000 bills) but would need a real backend filter (or a different pagination strategy) at significantly larger volumes.
 - **No per-bill mutation status surfaced in the UI.** The favourites mutation doesn't currently expose granular "this specific bill is mid-sync" state to the UI — only the most recent mutation's status is easily accessible via `useMutation`. Worth revisiting if a loading indicator per-favourite becomes a requirement.
 - **Favourites don't persist across refreshes** (see above).
+
+## Notes on the TypeScript setup
+
+`tsconfig.json` is a references-only shell (`"files": []`) pointing at `tsconfig.app.json` (app source) and `tsconfig.node.json` (Vite/Vitest config files) — the standard structure Vite's own React+TS template scaffolds, kept here so editor tooling and `tsc -b` agree on project boundaries. `npm run build` and `npm run type-check` both use `tsc -b` (build mode) rather than plain `tsc`, since plain `tsc` against a references-only root does nothing useful.
